@@ -1,3 +1,40 @@
+# Ternova Meet
+
+**Ternova Meet** es la versión corporativa de Ternova de [Meetily](https://github.com/Zackriya-Solutions/meeting-minutes)
+(open-source, MIT): un asistente de reuniones 100% local que graba, transcribe y
+resume, con la marca Ternova y la capacidad de **centralizar las transcripciones
+de Microsoft Teams** (ver [`docs/teams.md`](docs/teams.md)).
+
+- **Marca:** paleta indigo/naranja Ternova + tipografías Gosha Sans / Space Grotesk
+  (capa de tema concentrada en `globals.css` + `tailwind.config.js`).
+- **Identifier:** se mantiene `com.meetily.ai` para no romper la base de datos local
+  ni las automatizaciones existentes.
+- **Crédito:** basado en Meetily de Zackriya Solutions, licencia MIT. ¡Gracias!
+
+### Desarrollo
+
+```bash
+cd frontend
+pnpm install
+pnpm dev          # Next.js (puerto 3118)
+pnpm tauri:dev    # app de escritorio completa
+pnpm tauri:build  # build de producción
+```
+
+### Sincronizar con el upstream
+
+El branding está concentrado en pocos archivos para facilitar los merges:
+
+```bash
+git fetch upstream
+git merge upstream/main
+```
+
+> Mantén los cambios de marca agrupados en commits `branding:` para resolver
+> conflictos rápido.
+
+---
+
 <div align="center" style="border-bottom: none">
     <h1>
         <img src="docs/Meetily-6.png" style="border-radius: 10px;" />
