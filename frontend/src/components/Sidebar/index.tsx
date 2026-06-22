@@ -37,6 +37,7 @@ interface SidebarItem {
   title: string;
   type: 'folder' | 'file';
   children?: SidebarItem[];
+  source?: string | null;
 }
 
 const Sidebar: React.FC = () => {
@@ -62,6 +63,8 @@ const Sidebar: React.FC = () => {
   const { openImportDialog } = useImportDialog();
   const { betaFeatures } = useConfig();
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['meetings']));
+  // Ternova Meet: filtro por origen de la reunión
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'teams' | 'recorded'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showModelSettings, setShowModelSettings] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
@@ -501,7 +504,7 @@ const Sidebar: React.FC = () => {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                <p>Import Audio</p>
+                <p>Importar grabación / Teams</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -616,6 +619,11 @@ const Sidebar: React.FC = () => {
                   </div>
                 )}
                 <span className="flex-1 break-words">{item.title}</span>
+                {isMeetingItem && item.source === 'teams' && (
+                  <span className="flex-shrink-0 ml-1 mr-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700 group-hover:opacity-0 transition-opacity duration-150">
+                    Teams
+                  </span>
+                )}
                 {isMeetingItem && (
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                     <button
@@ -755,16 +763,49 @@ const Sidebar: React.FC = () => {
               </div>
             )}
 
+            {/* Filtro por origen (Ternova Meet) */}
+            {!isCollapsed && !searchQuery && (
+              <div className="flex-shrink-0 flex items-center gap-1 px-4 pt-2 pb-1">
+                {([
+                  { key: 'all', label: 'Todas' },
+                  { key: 'teams', label: 'Teams' },
+                  { key: 'recorded', label: 'Grabadas' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setSourceFilter(opt.key)}
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                      sourceFilter === opt.key
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Scrollable meeting items */}
             {!isCollapsed && (
               <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
                 {filteredSidebarItems
                   .filter(item => item.type === 'folder' && expandedFolders.has(item.id) && item.children)
-                  .map(item => (
-                    <div key={`${item.id}-children`} className="mx-3">
-                      {item.children!.map(child => renderItem(child, 1))}
-                    </div>
-                  ))}
+                  .map(item => {
+                    // Aplicar filtro por origen solo a la lista de reuniones (no en búsqueda).
+                    const children = (item.id === 'meetings' && !searchQuery && sourceFilter !== 'all')
+                      ? item.children!.filter(child =>
+                          sourceFilter === 'teams'
+                            ? child.source === 'teams'
+                            : child.source !== 'teams'
+                        )
+                      : item.children!;
+                    return (
+                      <div key={`${item.id}-children`} className="mx-3">
+                        {children.map(child => renderItem(child, 1))}
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -798,7 +839,7 @@ const Sidebar: React.FC = () => {
                 className="w-full flex items-center justify-center px-3 py-2 mt-1 text-sm font-medium text-gray-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors shadow-sm"
               >
                 <Upload className="w-4 h-4 mr-2" />
-                <span>Import Audio</span>
+                <span>Importar grabación / Teams</span>
               </button>
             )}
 

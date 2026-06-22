@@ -78,6 +78,9 @@ export function ImportAudioDialog({
   const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
+  // Ternova Meet: origen del import — archivo local o URL (Teams/Stream/SharePoint)
+  const [mode, setMode] = useState<'file' | 'url'>('file');
+  const [url, setUrl] = useState('');
 
   // Always start as false — represents "dialog has not yet been opened".
   // Do NOT initialize from the `open` prop: if the component mounts with open=true
@@ -139,6 +142,8 @@ export function ImportAudioDialog({
       setTitleModifiedByUser(false);
       setSelectedLang(selectedLanguage || 'auto');
       setShowAdvanced(false);
+      setMode('file');
+      setUrl('');
 
       // Validate preselected file if provided
       if (preselectedFile) {
@@ -185,14 +190,28 @@ export function ImportAudioDialog({
   };
 
   const handleStartImport = async () => {
-    if (!fileInfo) return;
+    const lang = isParakeetModel ? null : selectedLang === 'auto' ? null : selectedLang;
+    if (mode === 'url') {
+      if (!url.trim()) return;
+      await startImport(
+        url.trim(),
+        title || 'Reunión de Teams',
+        lang,
+        selectedModel?.name || null,
+        selectedModel?.provider || null,
+        'teams'
+      );
+      return;
+    }
 
+    if (!fileInfo) return;
     await startImport(
       fileInfo.path,
       title || fileInfo.filename,
-      isParakeetModel ? null : selectedLang === 'auto' ? null : selectedLang,
+      lang,
       selectedModel?.name || null,
-      selectedModel?.provider || null
+      selectedModel?.provider || null,
+      'import'
     );
   };
 
@@ -268,7 +287,53 @@ export function ImportAudioDialog({
           {/* File selection / info */}
           {!isProcessing && !error && (
             <>
-              {fileInfo ? (
+              {/* Conmutador Archivo | URL (Ternova Meet) */}
+              <div className="flex rounded-lg border border-gray-200 p-1 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setMode('file')}
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-colors ${mode === 'file' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <Upload className="h-4 w-4" /> Archivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('url')}
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-colors ${mode === 'url' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <Globe className="h-4 w-4" /> URL / Teams
+                </button>
+              </div>
+
+              {mode === 'url' ? (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-gray-700">
+                      URL de la grabación (Teams / Stream / SharePoint)
+                    </label>
+                    <Input
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="https://…"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Pega una URL directa al archivo. Para enlaces que requieren tu sesión
+                      (cookies), descarga primero con el flujo asistido y usa la pestaña Archivo.
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-gray-700">Meeting Title</label>
+                    <Input
+                      value={title}
+                      onChange={(e) => {
+                        setTitle(e.target.value);
+                        setTitleModifiedByUser(true);
+                      }}
+                      placeholder="Reunión de Teams"
+                    />
+                  </div>
+                </div>
+              ) : fileInfo ? (
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                   <div className="flex items-start gap-3">
                     <FileAudio className="h-8 w-8 text-blue-600 flex-shrink-0" />
@@ -326,7 +391,7 @@ export function ImportAudioDialog({
               )}
 
               {/* Advanced options (collapsible) */}
-              {fileInfo && (
+              {(fileInfo || mode === 'url') && (
                 <div className="border rounded-lg">
                   <button
                     onClick={() => setShowAdvanced(!showAdvanced)}
@@ -445,7 +510,7 @@ export function ImportAudioDialog({
               <Button
                 onClick={handleStartImport}
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={!fileInfo}
+                disabled={mode === 'url' ? !url.trim() : !fileInfo}
               >
                 <Upload className="h-4 w-4 mr-2" />
                 Import

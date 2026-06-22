@@ -250,6 +250,102 @@ fn extract_duration_from_metadata(path: &Path) -> Result<f64> {
     Ok(duration_seconds)
 }
 
+/// Borra un archivo temporal de descarga al hacer drop (cubre todas las
+/// salidas tempranas de run_import: éxito, error o cancelación).
+struct TempDownloadCleanup(Option<PathBuf>);
+
+impl Drop for TempDownloadCleanup {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+/// Descarga una URL remota a un archivo temporal por streaming, emitiendo
+/// progreso. Usado para importar grabaciones de Teams/Stream/SharePoint vía URL
+/// directa (no autenticada). Las URLs que requieren cookies de sesión se
+/// resuelven en el flujo asistido (yt-dlp/skill), que deja un archivo local.
+async fn download_url_to_temp<R: Runtime>(app: &AppHandle<R>, url: &str) -> Result<PathBuf> {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| anyhow!("Failed to build HTTP client: {}", e))?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| anyhow!("Failed to fetch URL: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(anyhow!("Download failed: HTTP {}", resp.status()));
+    }
+
+    // Inferir extensión desde Content-Type o la URL (default mp4).
+    let ext = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|ct| {
+            if ct.contains("mp4") {
+                Some("mp4")
+            } else if ct.contains("mpeg") {
+                Some("mp3")
+            } else if ct.contains("wav") {
+                Some("wav")
+            } else if ct.contains("webm") {
+                Some("webm")
+            } else if ct.contains("ogg") {
+                Some("ogg")
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            Path::new(url.split('?').next().unwrap_or(url))
+                .extension()
+                .and_then(|e| e.to_str())
+        })
+        .unwrap_or("mp4")
+        .to_string();
+
+    let total = resp.content_length();
+    let temp_path = std::env::temp_dir().join(format!(
+        "ternova-meet-import-{}.{}",
+        Uuid::new_v4(),
+        ext
+    ));
+
+    let mut file = tokio::fs::File::create(&temp_path)
+        .await
+        .map_err(|e| anyhow!("Failed to create temp file: {}", e))?;
+    let mut stream = resp.bytes_stream();
+    let mut downloaded: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        if IMPORT_CANCELLED.load(Ordering::SeqCst) {
+            drop(file);
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(anyhow!("Import cancelled"));
+        }
+        let chunk = chunk.map_err(|e| anyhow!("Download error: {}", e))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| anyhow!("Write error: {}", e))?;
+        downloaded += chunk.len() as u64;
+        if let Some(total) = total {
+            if total > 0 {
+                // Mapear la descarga al rango 2..=8% del progreso global.
+                let pct = 2 + ((downloaded as f64 / total as f64) * 6.0) as u32;
+                emit_progress(app, "downloading", pct.min(8), "Downloading from URL...");
+            }
+        }
+    }
+    file.flush().await.ok();
+    info!("Downloaded {} bytes to {}", downloaded, temp_path.display());
+    Ok(temp_path)
+}
+
 /// Start import of an audio file
 pub async fn start_import<R: Runtime>(
     app: AppHandle<R>,
@@ -258,6 +354,7 @@ pub async fn start_import<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    source_tag: Option<String>,
 ) -> Result<ImportResult> {
     // Acquire guard - ensures flag is cleared even on panic/early return
     let _guard = ImportGuard::acquire().map_err(|e| anyhow!(e))?;
@@ -273,6 +370,7 @@ pub async fn start_import<R: Runtime>(
         language,
         model,
         provider,
+        source_tag,
     )
     .await;
 
@@ -315,8 +413,31 @@ async fn run_import<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    source_tag: Option<String>,
 ) -> Result<ImportResult> {
-    let source = PathBuf::from(&source_path);
+    // Resolve the origin: local path or remote URL (Stream/SharePoint/HTTP).
+    // URLs are stream-downloaded to a temp file first; the rest of the pipeline
+    // works on a local file. Authenticated Stream/SharePoint URLs that need
+    // browser cookies are handled by the assisted flow (yt-dlp/skill) which
+    // leaves a local file — that arrives here as a normal local source.
+    let is_url = source_path.starts_with("http://") || source_path.starts_with("https://");
+
+    // Label de origen: 'teams' por defecto para URLs, 'import' para archivos.
+    let source_label = source_tag
+        .as_deref()
+        .unwrap_or(if is_url { "teams" } else { "import" })
+        .to_string();
+
+    // Cleanup del temporal en cualquier salida (éxito, error o cancelación).
+    let mut temp_cleanup = TempDownloadCleanup(None);
+    let source = if is_url {
+        emit_progress(&app, "downloading", 2, "Downloading from URL...");
+        let path = download_url_to_temp(&app, &source_path).await?;
+        temp_cleanup.0 = Some(path.clone());
+        path
+    } else {
+        PathBuf::from(&source_path)
+    };
 
     // Validate source file
     if !source.exists() {
@@ -324,8 +445,8 @@ async fn run_import<R: Runtime>(
     }
 
     info!(
-        "Starting import for '{}' from {} with language {:?}, model {:?}, provider {:?}",
-        title, source_path, language, model, provider
+        "Starting import for '{}' from {} (source={}) with language {:?}, model {:?}, provider {:?}",
+        title, source_path, source_label, language, model, provider
     );
 
     // Determine which provider to use (default to whisper)
@@ -642,6 +763,7 @@ async fn run_import<R: Runtime>(
         &title,
         &segments,
         meeting_folder.to_string_lossy().to_string(),
+        Some(source_label.as_str()),
     )
     .await?;
 
@@ -658,7 +780,7 @@ async fn run_import<R: Runtime>(
         &title,
         duration_seconds,
         &dest_filename,
-        "import",
+        &source_label,
     ) {
         warn!("Failed to write metadata.json: {}", e);
     }
@@ -692,6 +814,7 @@ async fn create_meeting_with_transcripts(
     title: &str,
     segments: &[TranscriptSegment],
     folder_path: String,
+    source: Option<&str>,
 ) -> Result<String> {
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
     let now = chrono::Utc::now();
@@ -704,14 +827,15 @@ async fn create_meeting_with_transcripts(
 
     // Insert meeting
     sqlx::query(
-        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path)
-         VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, source)
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&meeting_id)
     .bind(title)
     .bind(now)
     .bind(now)
     .bind(&folder_path)
+    .bind(source)
     .execute(&mut *tx)
     .await
     .map_err(|e| anyhow!("Failed to create meeting: {}", e))?;
@@ -968,6 +1092,7 @@ pub async fn start_import_audio_command<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    source_tag: Option<String>,
 ) -> Result<ImportStarted, String> {
     // Check if import is already in progress (guard will be acquired in start_import)
     if IMPORT_IN_PROGRESS.load(Ordering::SeqCst) {
@@ -976,7 +1101,8 @@ pub async fn start_import_audio_command<R: Runtime>(
 
     // Spawn import in background
     tauri::async_runtime::spawn(async move {
-        let result = start_import(app, source_path, title, language, model, provider).await;
+        let result =
+            start_import(app, source_path, title, language, model, provider, source_tag).await;
 
         if let Err(e) = result {
             error!("Import failed: {}", e);
