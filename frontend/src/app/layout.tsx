@@ -1,7 +1,7 @@
 'use client'
 
 import './globals.css'
-import { Source_Sans_3 } from 'next/font/google'
+import localFont from 'next/font/local'
 import Sidebar from '@/components/Sidebar'
 import { SidebarProvider } from '@/components/Sidebar/SidebarProvider'
 import MainContent from '@/components/MainContent'
@@ -27,10 +27,24 @@ import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
 
 
-const sourceSans3 = Source_Sans_3({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-source-sans-3',
+// Ternova Meet — tipografías de marca (Ternova Design System 2), cargadas en
+// local para funcionar 100% offline (sin Google Fonts).
+// Space Grotesk = cuerpo/UI; Gosha Sans = display/headings.
+const spaceGrotesk = localFont({
+  src: [
+    { path: '../../public/fonts/SpaceGrotesk-VariableFont_wght.ttf', weight: '300 700', style: 'normal' },
+  ],
+  variable: '--font-sans',
+  display: 'swap',
+})
+
+const goshaSans = localFont({
+  src: [
+    { path: '../../public/fonts/GoshaSansRegular.otf', weight: '400', style: 'normal' },
+    { path: '../../public/fonts/GoshaSansBold.otf', weight: '700', style: 'normal' },
+  ],
+  variable: '--font-display',
+  display: 'swap',
 })
 
 // Module-level component — stable reference across RootLayout re-renders.
@@ -232,7 +246,7 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={`${sourceSans3.variable} font-sans antialiased`}>
+      <body className={`${spaceGrotesk.variable} ${goshaSans.variable} font-sans antialiased`}>
         <AnalyticsProvider>
           <RecordingStateProvider>
             <TranscriptProvider>

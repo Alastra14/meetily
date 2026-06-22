@@ -77,59 +77,63 @@
 }
 
 @layer base {
+  /* ===== Ternova Meet — paleta de marca (indigo + naranja) =====
+     Derivada de Ternova Design System 2 (colors_and_type.css).
+     shadcn usa HSL "H S% L%". --primary = indigo de marca; --ring = naranja
+     (focus); --accent = superficie de hover cálida y sutil. */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --background: 37 31% 95%;          /* tn-paper */
+    --foreground: 263 83% 7%;          /* tn-ink */
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 263 83% 7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --popover-foreground: 263 83% 7%;
+    --primary: 262 89% 15%;            /* tn-indigo-900 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 264 50% 96%;          /* tn-indigo-50 */
+    --secondary-foreground: 262 89% 15%;
+    --muted: 264 50% 96%;              /* tn-indigo-50 */
+    --muted-foreground: 258 11% 37%;   /* tn-slate */
+    --accent: 29 100% 95%;             /* tn-orange-50 (hover cálido) */
+    --accent-foreground: 262 89% 15%;
+    --destructive: 3 54% 50%;          /* tn-red */
+    --destructive-foreground: 0 0% 100%;
+    --border: 256 22% 90%;             /* tn-line */
+    --input: 256 22% 90%;
+    --ring: 25 100% 50%;               /* tn-orange-500 (focus) */
     --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    --chart-1: 25 100% 50%;            /* naranja */
+    --chart-2: 257 52% 45%;            /* indigo-500 */
+    --chart-3: 141 40% 40%;            /* verde */
+    --chart-4: 38 75% 55%;             /* ámbar */
+    --chart-5: 257 50% 68%;            /* indigo-300 */
   }
 
   .dark {
-    --background: 0 0% 3.9%;
+    --background: 265 100% 9%;         /* tn-indigo-950 */
     --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
+    --card: 262 89% 15%;               /* tn-indigo-900 */
     --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
+    --popover: 262 89% 15%;
     --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
+    --primary: 257 50% 68%;            /* tn-indigo-300 (visible sobre fondo oscuro) */
+    --primary-foreground: 265 100% 9%;
+    --secondary: 262 81% 21%;          /* tn-indigo-800 */
     --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
+    --muted: 262 81% 21%;
+    --muted-foreground: 256 15% 72%;
+    --accent: 262 81% 21%;
     --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 3 54% 45%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --border: 262 81% 21%;             /* tn-indigo-800 */
+    --input: 262 81% 21%;
+    --ring: 25 100% 50%;               /* tn-orange-500 */
+    --chart-1: 25 100% 58%;            /* naranja-400 */
+    --chart-2: 257 50% 68%;            /* indigo-300 */
+    --chart-3: 141 40% 50%;
+    --chart-4: 38 75% 60%;
+    --chart-5: 257 52% 45%;
   }
 }
 
@@ -143,6 +147,11 @@
     @apply bg-background text-foreground;
     overflow: hidden;
     height: 100%;
+  }
+
+  /* Ternova Meet — headings con la tipografía display de marca (Gosha Sans) */
+  h1, h2, h3 {
+    font-family: var(--font-display), var(--font-sans), sans-serif;
   }
 
   /* Make the window draggable */
