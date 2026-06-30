@@ -628,13 +628,65 @@ async fn run_import<R: Runtime>(
 
     emit_progress(&app, "transcribing", 30, "Loading transcription engine...");
 
-    // Initialize the appropriate engine
-    let whisper_engine = if !use_parakeet && total_segments > 0 {
+    // Ternova Meet — offload a la DGX: si el provider de transcripción es "remote"
+    // (explícito en el import o configurado globalmente en Ajustes), transcribimos
+    // los segmentos contra el endpoint ASR remoto en vez de un motor local.
+    use crate::audio::transcription::provider::TranscriptionProvider;
+    let use_remote = {
+        if provider.as_deref() == Some("remote") {
+            true
+        } else {
+            match app.try_state::<AppState>() {
+                Some(state) => match crate::database::repositories::setting::SettingsRepository::get_transcript_config(state.db_manager.pool()).await {
+                    Ok(Some(cfg)) => cfg.provider == "remote",
+                    _ => false,
+                },
+                None => false,
+            }
+        }
+    };
+
+    let remote_provider = if use_remote && total_segments > 0 {
+        let state = app
+            .try_state::<AppState>()
+            .ok_or_else(|| anyhow!("App state not available"))?;
+        let pool = state.db_manager.pool();
+        let cfg = crate::database::repositories::setting::SettingsRepository::get_transcript_config(pool)
+            .await
+            .map_err(|e| anyhow!("No se pudo leer la config de transcripción: {}", e))?;
+        let endpoint = cfg
+            .as_ref()
+            .and_then(|c| c.remote_endpoint.clone())
+            .unwrap_or_default();
+        if endpoint.trim().is_empty() {
+            return Err(anyhow!(
+                "Transcripción remota (DGX) seleccionada pero falta el endpoint. \
+                 Configúralo en Ajustes → Transcripción → Remoto (DGX)."
+            ));
+        }
+        let api_key =
+            crate::database::repositories::setting::SettingsRepository::get_transcript_api_key(pool, "remote")
+                .await
+                .ok()
+                .flatten();
+        let model_name = model.clone().unwrap_or_else(|| "whisper-large-v3".to_string());
+        info!("🛰️ Import usará ASR remoto (DGX) en {} (modelo {})", endpoint, model_name);
+        Some(std::sync::Arc::new(
+            crate::audio::transcription::RemoteTranscriptionProvider::new(
+                endpoint, model_name, api_key,
+            ),
+        ))
+    } else {
+        None
+    };
+
+    // Initialize the appropriate local engine (solo si no es remoto)
+    let whisper_engine = if !use_parakeet && !use_remote && total_segments > 0 {
         Some(get_or_init_whisper(&app, model.as_deref()).await?)
     } else {
         None
     };
-    let parakeet_engine = if use_parakeet && total_segments > 0 {
+    let parakeet_engine = if use_parakeet && !use_remote && total_segments > 0 {
         Some(get_or_init_parakeet(&app, model.as_deref()).await?)
     } else {
         None
@@ -700,7 +752,14 @@ async fn run_import<R: Runtime>(
         }
 
         // Transcribe
-        let (text, conf) = if use_parakeet {
+        let (text, conf) = if use_remote {
+            let p = remote_provider.as_ref().unwrap();
+            let r = p
+                .transcribe(segment.samples.clone(), language.clone())
+                .await
+                .map_err(|e| anyhow!("Remote transcription failed on segment {}: {}", i, e))?;
+            (r.text, r.confidence.unwrap_or(0.9f32))
+        } else if use_parakeet {
             let engine = parakeet_engine.as_ref().unwrap();
             let text = engine
                 .transcribe_audio(segment.samples.clone())
