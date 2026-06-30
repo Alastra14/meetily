@@ -688,6 +688,34 @@ pub async fn api_save_transcript_config<R: Runtime>(
     )
 }
 
+/// Ternova Meet — guarda la config de transcripción REMOTA (DGX / ASR OpenAI-compatible).
+#[tauri::command]
+pub async fn api_save_transcript_remote_config<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    endpoint: String,
+    model: String,
+    api_key: Option<String>,
+    _auth_token: Option<String>,
+) -> Result<serde_json::Value, String> {
+    log_info!("api_save_transcript_remote_config called (native): endpoint={}", &endpoint);
+    let pool = state.db_manager.pool();
+
+    if let Err(e) = SettingsRepository::save_transcript_config(pool, "remote", &model).await {
+        log_error!("Failed to save transcript config (remote): {}", e);
+        return Err(e.to_string());
+    }
+    if let Err(e) =
+        SettingsRepository::save_transcript_remote_config(pool, &endpoint, api_key.as_deref()).await
+    {
+        log_error!("Failed to save remote transcript endpoint: {}", e);
+        return Err(e.to_string());
+    }
+
+    log_info!("Successfully saved remote transcript configuration.");
+    Ok(serde_json::json!({ "status": "success", "message": "Remote transcript configuration saved" }))
+}
+
 #[tauri::command]
 pub async fn api_get_transcript_api_key<R: Runtime>(
     _app: AppHandle<R>,
