@@ -101,6 +101,9 @@ pub struct TranscriptConfig {
     pub model: String,
     #[serde(rename = "apiKey")]
     pub api_key: Option<String>,
+    // Ternova Meet — endpoint del ASR remoto (DGX) cuando provider == "remote"
+    #[serde(rename = "remoteEndpoint", default)]
+    pub endpoint: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -616,6 +619,7 @@ pub async fn api_get_transcript_config<R: Runtime>(
                 Ok(api_key) => {
                     log_info!("Successfully retrieved transcript config and API key.");
                     Ok(Some(TranscriptConfig {
+                        endpoint: config.remote_endpoint.clone(),
                         provider: config.provider,
                         model: config.model,
                         api_key,
@@ -637,6 +641,7 @@ pub async fn api_get_transcript_config<R: Runtime>(
                 provider: "parakeet".to_string(),
                 model: crate::config::DEFAULT_PARAKEET_MODEL.to_string(),
                 api_key: None,
+                endpoint: None,
             }))
         }
         Err(e) => {

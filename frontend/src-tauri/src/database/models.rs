@@ -130,4 +130,11 @@ pub struct TranscriptSetting {
     #[sqlx(rename = "openaiApiKey")]
     #[serde(rename = "openaiApiKey")]
     pub openai_api_key: Option<String>,
+    // Ternova Meet — transcripción remota (DGX / endpoint ASR OpenAI-compatible)
+    #[sqlx(rename = "remoteEndpoint", default)]
+    #[serde(rename = "remoteEndpoint", default)]
+    pub remote_endpoint: Option<String>,
+    #[sqlx(rename = "remoteApiKey", default)]
+    #[serde(rename = "remoteApiKey", default)]
+    pub remote_api_key: Option<String>,
 }
