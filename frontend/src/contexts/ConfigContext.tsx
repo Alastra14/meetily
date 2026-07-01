@@ -97,13 +97,30 @@ const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
+  // Ternova Meet — default frictionless: build corporativo puede venir apuntando el
+  // resumen a la DGX (vLLM OpenAI-compatible) vía NEXT_PUBLIC_TERNOVA_DGX_SUMMARY_ENDPOINT.
+  // Si no está, arranca en 'ollama' (sin regresión). El usuario/ config guardada override.
+  const dgxSummaryEndpoint = process.env.NEXT_PUBLIC_TERNOVA_DGX_SUMMARY_ENDPOINT;
+  const dgxSummaryModel = process.env.NEXT_PUBLIC_TERNOVA_DGX_SUMMARY_MODEL || 'gpt-oss:20b';
+
   // Model configuration state
-  const [modelConfig, setModelConfig] = useState<ModelConfig>({
-    provider: 'ollama',
-    model: 'llama3.2:latest',
-    whisperModel: 'large-v3',
-    ollamaEndpoint: null
-  });
+  const [modelConfig, setModelConfig] = useState<ModelConfig>(
+    dgxSummaryEndpoint
+      ? {
+          provider: 'custom-openai',
+          model: dgxSummaryModel,
+          whisperModel: 'large-v3',
+          ollamaEndpoint: null,
+          customOpenAIEndpoint: dgxSummaryEndpoint,
+          customOpenAIModel: dgxSummaryModel,
+        }
+      : {
+          provider: 'ollama',
+          model: 'llama3.2:latest',
+          whisperModel: 'large-v3',
+          ollamaEndpoint: null,
+        }
+  );
 
   // Transcript model configuration state
   const [transcriptModelConfig, setTranscriptModelConfig] = useState<TranscriptModelProps>({

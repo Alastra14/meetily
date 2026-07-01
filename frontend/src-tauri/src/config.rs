@@ -23,6 +23,13 @@ pub const DEFAULT_DGX_TRANSCRIBE_ENDPOINT: Option<&str> =
 /// Modelo ASR remoto por defecto (sobreescribible en Ajustes → Transcripción).
 pub const DEFAULT_REMOTE_TRANSCRIBE_MODEL: &str = "whisper-large-v3";
 
+/// Ternova Meet — endpoint por defecto del LLM de resumen en la DGX (vLLM,
+/// OpenAI-compatible), horneado en build. Usado como fallback cuando el provider
+/// de resumen es CustomOpenAI y no hay config guardada. Compilar con:
+///   TERNOVA_DGX_SUMMARY_ENDPOINT=http://<dgx-host>:8000/v1 pnpm tauri:build
+pub const DEFAULT_DGX_SUMMARY_ENDPOINT: Option<&str> =
+    option_env!("TERNOVA_DGX_SUMMARY_ENDPOINT");
+
 /// Whisper model catalog with metadata for all supported models.
 /// Used by both WhisperEngine::discover_models() and discover_models_standalone().
 ///

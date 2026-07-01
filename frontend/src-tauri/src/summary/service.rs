@@ -369,9 +369,20 @@ impl SummaryService {
                         )
                     }
                     Ok(None) => {
-                        let err_msg = "Custom OpenAI provider selected but no configuration found";
-                        Self::update_process_failed(&pool, &meeting_id, err_msg).await;
-                        return;
+                        // Ternova Meet — frictionless: si no hay config guardada pero el build
+                        // trae endpoint DGX horneado para resumen, úsalo (el modelo viene del
+                        // frontend en `model_name`).
+                        match crate::config::DEFAULT_DGX_SUMMARY_ENDPOINT {
+                            Some(dgx) if !dgx.trim().is_empty() => {
+                                info!("✓ Using baked DGX summary endpoint: {}", dgx);
+                                (Some(dgx.to_string()), None, None, None, None)
+                            }
+                            _ => {
+                                let err_msg = "Custom OpenAI provider selected but no configuration found";
+                                Self::update_process_failed(&pool, &meeting_id, err_msg).await;
+                                return;
+                            }
+                        }
                     }
                     Err(e) => {
                         let err_msg = format!("Failed to retrieve custom OpenAI config: {}", e);
