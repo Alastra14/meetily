@@ -44,6 +44,26 @@ app y `TeamsSource::GraphApi`. Requiere aprobación de admin de Ternova. Diseña
 respetando las políticas internas (Zero Trust, infra Azure aprobada, nada
 sensible a terceros).
 
+## Despliegue empresarial sin fricción (build corporativo → DGX)
+
+Para que las máquinas cliente (incluidas las que no tienen GPU) usen la DGX **sin que
+cada usuario configure nada**, se compila un build corporativo con el endpoint horneado:
+
+```bash
+# Transcripción por defecto → DGX (ASR OpenAI-compatible)
+TERNOVA_DGX_TRANSCRIBE_ENDPOINT=http://<dgx-host>:8000/v1 pnpm tauri:build
+```
+
+Con esa variable, al no haber config previa la app arranca en provider `remote`
+apuntando a la DGX (`src/config.rs::DEFAULT_DGX_TRANSCRIBE_ENDPOINT`,
+`api_get_transcript_config`). Sin la variable, el build se comporta local
+(whisper/parakeet) — sin regresión. El usuario siempre puede cambiarlo en
+Ajustes → Transcripción.
+
+- **Resumen → DGX:** hoy se configura con el proveedor `CustomOpenAI`
+  (base URL `http://<dgx-host>:8000/v1`, modelo del vLLM). Un default horneado
+  equivalente para el resumen queda como follow-up.
+
 ## Continuidad
 
 El identifier de la app sigue siendo `com.meetily.ai`, por lo que la BD, los

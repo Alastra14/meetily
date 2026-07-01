@@ -636,6 +636,19 @@ pub async fn api_get_transcript_config<R: Runtime>(
             }
         }
         Ok(None) => {
+            // Ternova Meet — si el build corporativo trae endpoint DGX horneado,
+            // arranca en "remoto" (frictionless: sin config por usuario).
+            if let Some(dgx) = crate::config::DEFAULT_DGX_TRANSCRIBE_ENDPOINT {
+                if !dgx.trim().is_empty() {
+                    log_info!("No transcript config; usando default DGX (remote): {}", dgx);
+                    return Ok(Some(TranscriptConfig {
+                        provider: "remote".to_string(),
+                        model: crate::config::DEFAULT_REMOTE_TRANSCRIBE_MODEL.to_string(),
+                        api_key: None,
+                        endpoint: Some(dgx.to_string()),
+                    }));
+                }
+            }
             log_info!("No transcript config found, returning default.");
             Ok(Some(TranscriptConfig {
                 provider: "parakeet".to_string(),
