@@ -1,0 +1,34 @@
+{
+  "name": "Toma de decisiones",
+  "description": "Para reuniones enfocadas en evaluar opciones y decidir un curso de acción.",
+  "sections": [
+    {
+      "title": "Contexto y objetivo",
+      "instruction": "Explica brevemente por qué se convocó la reunión y qué decisión se buscaba tomar.",
+      "format": "paragraph"
+    },
+    {
+      "title": "Opciones discutidas",
+      "instruction": "Lista cada opción evaluada con sus pros y contras principales.",
+      "format": "list",
+      "item_format": "| **Opción** | **Pros** | **Contras** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Decisiones tomadas",
+      "instruction": "Qué se decidió, quién tomó o aprobó la decisión, y por qué se eligió esa opción.",
+      "format": "list",
+      "item_format": "| **Decisión** | **Decidido por** | **Justificación** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Acuerdos y responsables",
+      "instruction": "Acciones derivadas de las decisiones, con responsable y fecha de cumplimiento.",
+      "format": "list",
+      "item_format": "| **Responsable** | **Acuerdo** | **Fecha** |\n| --- | --- | --- |"
+    },
+    {
+      "title": "Riesgos y pendientes",
+      "instruction": "Riesgos identificados sobre la decisión tomada y temas que quedaron abiertos o por resolver.",
+      "format": "list"
+    }
+  ]
+}

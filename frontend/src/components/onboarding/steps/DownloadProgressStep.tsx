@@ -33,6 +33,7 @@ export function DownloadProgressStep() {
     setSummaryModelDownloaded,
     startBackgroundDownloads,
     completeOnboarding,
+    completeOnboardingWithoutLocalModels,
   } = useOnboarding();
 
   const [isMac, setIsMac] = useState(false);
@@ -54,6 +55,7 @@ export function DownloadProgressStep() {
   });
 
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isSkipping, setIsSkipping] = useState(false);
   const parakeetDownloadStartedRef = useRef(false);
   const summaryDownloadStartedRef = useRef(false);
   const retryingRef = useRef(false);
@@ -387,6 +389,29 @@ export function DownloadProgressStep() {
     }
   };
 
+  // Permite omitir la descarga de modelos locales y completar el onboarding de
+  // inmediato; la transcripción/resumen se pueden configurar luego en Ajustes.
+  const handleSkipForNow = async () => {
+    if (isSkipping || isCompleting) return;
+    setIsSkipping(true);
+    try {
+      await completeOnboardingWithoutLocalModels();
+      toast.info('Puedes configurar la transcripción cuando quieras', {
+        description: 'Ve a Ajustes → Transcription para elegir un motor local o remoto.',
+        duration: 6000,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      window.location.reload();
+    } catch (error) {
+      console.error('[DownloadProgressStep] Failed to skip onboarding:', error);
+      toast.error('No se pudo omitir la configuración', {
+        description: 'Inténtalo de nuevo.',
+      });
+      setIsSkipping(false);
+    }
+  };
+
   const renderDownloadCard = (
     title: string,
     icon: React.ReactNode,
@@ -521,10 +546,10 @@ export function DownloadProgressStep() {
         </AnimatePresence>
 
         {/* Continue Button */}
-        <div className="w-full max-w-xs">
+        <div className="w-full max-w-xs space-y-3">
           <Button
             onClick={handleContinue}
-            disabled={!parakeetDownloaded || isCompleting}
+            disabled={!parakeetDownloaded || isCompleting || isSkipping}
             className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {(isCompleting || !parakeetDownloaded) ? (
@@ -533,6 +558,22 @@ export function DownloadProgressStep() {
               'Continue'
             )}
           </Button>
+
+          <button
+            type="button"
+            onClick={handleSkipForNow}
+            disabled={isSkipping || isCompleting}
+            className="w-full text-center text-xs text-gray-500 hover:text-gray-700 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSkipping ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Omitiendo...
+              </span>
+            ) : (
+              'Omitir por ahora (configurar más tarde en Ajustes)'
+            )}
+          </button>
         </div>
       </div>
     </OnboardingContainer>

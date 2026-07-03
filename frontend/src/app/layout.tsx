@@ -10,6 +10,8 @@ import { Toaster, toast } from 'sonner'
 import "sonner/dist/styles.css"
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { ChatDock } from '@/components/Chat/ChatDock'
+import { ChatUIProvider } from '@/contexts/ChatUIContext'
+import { applyThemeMode, getThemeMode, THEME_CHANGE_EVENT } from '@/lib/theme'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -56,18 +58,21 @@ const goshaSans = localFont({
   display: 'swap',
 })
 
-// Ternova Meet — sigue el tema del sistema togglendo la clase `dark` en <html>
-// (tailwind darkMode: ['class']). La ventana Tauri ya no fija theme, así que
-// el chrome nativo también sigue al sistema.
+// Ternova Meet — aplica el tema elegido (claro/oscuro/sistema, ver lib/theme)
+// togglendo la clase `dark` en <html>. Reacciona al cambio del sistema y al
+// toggle de la UI (evento tn-theme-change).
 function SystemThemeWatcher() {
   useEffect(() => {
+    applyThemeMode(getThemeMode())
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const apply = (dark: boolean) =>
-      document.documentElement.classList.toggle('dark', dark)
-    apply(mq.matches)
-    const onChange = (e: MediaQueryListEvent) => apply(e.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
+    const onSystem = () => applyThemeMode(getThemeMode())
+    const onManual = () => applyThemeMode(getThemeMode())
+    mq.addEventListener('change', onSystem)
+    window.addEventListener(THEME_CHANGE_EVENT, onManual)
+    return () => {
+      mq.removeEventListener('change', onSystem)
+      window.removeEventListener(THEME_CHANGE_EVENT, onManual)
+    }
   }, [])
   return null
 }
@@ -291,14 +296,16 @@ export default function RootLayout({
                               {showOnboarding ? (
                                 <OnboardingFlow onComplete={handleOnboardingComplete} />
                               ) : (
-                                <div className="flex">
-                                  <Sidebar />
-                                  <MainContent>{children}</MainContent>
-                                  {/* Ternova Meet: chat con las reuniones (panel lateral) */}
-                                  <Suspense fallback={null}>
-                                    <ChatDock />
-                                  </Suspense>
-                                </div>
+                                <ChatUIProvider>
+                                  <div className="flex">
+                                    <Sidebar />
+                                    <MainContent>{children}</MainContent>
+                                    {/* Ternova Meet: chat acoplado (ocupa espacio, no tapa) */}
+                                    <Suspense fallback={null}>
+                                      <ChatDock />
+                                    </Suspense>
+                                  </div>
+                                </ChatUIProvider>
                               )}
                               {/* Import audio overlay and dialog */}
                               <ImportDropOverlay visible={showDropOverlay} />

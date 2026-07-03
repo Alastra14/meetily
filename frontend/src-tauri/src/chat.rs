@@ -281,12 +281,17 @@ pub async fn chat_with_meetings<R: Runtime>(
         convo.push_str(&format!("{}: {}\n", who, h.content));
     }
 
-    let user_prompt = format!(
+    let mut user_prompt = format!(
         "CONTEXTO DE REUNIONES:\n{}\n\n{}Pregunta del usuario: {}",
         context,
         if convo.is_empty() { String::new() } else { format!("CONVERSACIÓN PREVIA:\n{}\n", convo) },
         question
     );
+    // El vLLM de la DGX corre Qwen3.x: sin esta señal el modelo vuelca su
+    // razonamiento ("thinking") en la respuesta. Convención Qwen: /no_think.
+    if target == "ternova" {
+        user_prompt.push_str("\n/no_think");
+    }
 
     // ---- 4) LLM (reutiliza el cliente del resumen) ----
     let client = reqwest::Client::new();

@@ -61,6 +61,7 @@ interface OnboardingContextType {
   setPermissionStatus: (permission: keyof OnboardingPermissions, status: PermissionStatus) => void;
   setPermissionsSkipped: (skipped: boolean) => void;
   completeOnboarding: () => Promise<void>;
+  completeOnboardingWithoutLocalModels: () => Promise<void>;
   startBackgroundDownloads: (options: StartBackgroundDownloadsOptions) => Promise<void>;
   retryParakeetDownload: () => Promise<void>;
 }
@@ -503,6 +504,47 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
+  // Ternova Meet — completa el onboarding SIN descargar/forzar modelos locales.
+  // Se usa cuando el usuario elige el "Servidor Ternova (DGX)" (transcripción y
+  // resumen remotos) o cuando decide omitir la descarga desde DownloadProgressStep.
+  // A diferencia de completeOnboarding(), NO invoca el comando Rust
+  // `complete_onboarding` (que fuerza provider=builtin-ai/parakeet en la DB);
+  // solo persiste el estado de onboarding como completado, respetando cualquier
+  // configuración de transcripción/resumen remota ya guardada por el usuario.
+  const completeOnboardingWithoutLocalModels = async () => {
+    try {
+      isCompletingRef.current = true;
+
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = undefined;
+      }
+
+      await invoke('save_onboarding_status_cmd', {
+        status: {
+          version: '1.0',
+          completed: true,
+          current_step: 4,
+          model_status: {
+            parakeet: parakeetDownloaded ? 'downloaded' : 'not_downloaded',
+            summary: summaryModelDownloaded ? 'downloaded' : 'not_downloaded',
+            selected_summary_model: selectedSummaryModel || undefined,
+          },
+          last_updated: new Date().toISOString(),
+        },
+      });
+
+      setCompleted(true);
+      console.log('[OnboardingContext] Onboarding completed without local models');
+
+      isCompletingRef.current = false;
+    } catch (error) {
+      console.error('[OnboardingContext] Failed to complete onboarding without local models:', error);
+      isCompletingRef.current = false;
+      throw error;
+    }
+  };
+
   // Start background downloads for models.
   const startBackgroundDownloads = async ({
     includeParakeet,
@@ -627,6 +669,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         setPermissionStatus,
         setPermissionsSkipped,
         completeOnboarding,
+        completeOnboardingWithoutLocalModels,
         startBackgroundDownloads,
         retryParakeetDownload,
       }}

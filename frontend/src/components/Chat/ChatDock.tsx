@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ChatPanel, ChatToggleButton } from './ChatPanel';
+import { useChatUI } from '@/contexts/ChatUIContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
@@ -15,7 +16,7 @@ import { useRecordingState } from '@/contexts/RecordingStateContext';
  * - Home sin grabación: alcance "todas las reuniones".
  */
 export function ChatDock() {
-  const [open, setOpen] = useState(false);
+  const { chatOpen: open, setChatOpen: setOpen } = useChatUI();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { currentMeeting, meetings } = useSidebar();
@@ -44,9 +45,15 @@ export function ChatDock() {
       .join('\n');
   }, [isRecording, transcripts]);
 
+  // En Home el botón vive junto a los indicadores de grabación
+  // (RecordingControls); el flotante solo aparece en las demás vistas.
+  const showFloatingButton = pathname !== '/';
+
   return (
     <>
-      <ChatToggleButton onClick={() => setOpen(true)} visible={!open} />
+      {showFloatingButton && (
+        <ChatToggleButton onClick={() => setOpen(true)} visible={!open} />
+      )}
       <ChatPanel
         open={open}
         onOpenChange={setOpen}

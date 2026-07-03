@@ -4,12 +4,34 @@ import { invoke } from '@tauri-apps/api/core';
 import { appDataDir } from '@tauri-apps/api/path';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { Play, Pause, Square, Mic, AlertCircle, X } from 'lucide-react';
+import { ChatTeardropText } from '@phosphor-icons/react';
+import { useChatUI } from '@/contexts/ChatUIContext';
 import { ProcessRequest, SummaryResponse } from '@/types/summary';
 import { listen } from '@tauri-apps/api/event';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import Analytics from '@/lib/analytics';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
+
+interface AudioLevelData {
+  device_name: string;
+  device_type: string;
+  rms_level: number;
+  peak_level: number;
+  is_active: boolean;
+}
+
+interface AudioLevelUpdate {
+  timestamp: number;
+  levels: AudioLevelData[];
+}
+
+// Relative weights per bar to fake a small "spectrum" look from a single level.
+const BAR_WEIGHTS = [0.6, 0.85, 1.0, 0.85, 0.6];
+const MAX_BAR_PX = 24;
+const MIN_BAR_PX = 4;
+const LERP_FACTOR = 0.4;
+const FALLBACK_TIMEOUT_MS = 2000;
 
 interface RecordingControlsProps {
   isRecording: boolean;
@@ -43,6 +65,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
 }) => {
   // Use global recording state context for pause state (syncs with tray operations)
   const recordingState = useRecordingState();
+  const { toggleChat } = useChatUI();
   const isPaused = recordingState.isPaused;
 
   const [showPlayback, setShowPlayback] = useState(false);
@@ -58,6 +81,15 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   const [isValidatingModel, setIsValidatingModel] = useState(false);
   const [speechDetected, setSpeechDetected] = useState(false);
   const [deviceError, setDeviceError] = useState<{ title: string, message: string } | null>(null);
+
+  // Real audio-driven bar heights (px strings), independent from the parent's fake `barHeights` prop.
+  // Falls back to the parent-provided `barHeights` if no real levels arrive in time.
+  const [liveBarHeights, setLiveBarHeights] = useState<string[] | null>(null);
+  const targetLevelRef = useRef(0); // 0..1, derived from rms/peak
+  const currentHeightsRef = useRef<number[]>(BAR_WEIGHTS.map(() => MIN_BAR_PX));
+  const hasReceivedLevelRef = useRef(false);
+  const rafIdRef = useRef<number | null>(null);
+  const fallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentTime = 0;
   const duration = 0;
@@ -339,6 +371,140 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
     };
   }, [onRecordingStop, onTranscriptionError]);
 
+  // Real audio-level driven bar indicator.
+  // Subscribes to the Rust `audio-levels` event while actively recording, starts/stops the
+  // level monitor around the recording lifecycle, and smoothly interpolates bar heights.
+  // Falls back to the parent's fake `barHeights` prop if no event arrives within 2s.
+  useEffect(() => {
+    const active = isRecording && !isPaused;
+
+    if (!active) {
+      // Not actively recording: reset to fallback/idle state.
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      if (fallbackTimeoutRef.current !== null) {
+        clearTimeout(fallbackTimeoutRef.current);
+        fallbackTimeoutRef.current = null;
+      }
+      hasReceivedLevelRef.current = false;
+      targetLevelRef.current = 0;
+      currentHeightsRef.current = BAR_WEIGHTS.map(() => MIN_BAR_PX);
+      setLiveBarHeights(null);
+      return;
+    }
+
+    let cancelled = false;
+    let unlistenLevels: (() => void) | undefined;
+    const micDeviceName = selectedDevices?.micDevice;
+
+    // Best-effort: (re)start the native level monitor for the selected mic while recording.
+    // Silently ignored if it fails (e.g. already running, or no device name available) —
+    // the audio-levels listener + 2s fallback below still guarantee a working UI either way.
+    (async () => {
+      try {
+        await invoke('start_audio_level_monitoring', {
+          deviceNames: micDeviceName ? [micDeviceName] : [],
+        });
+      } catch (err) {
+        console.debug('start_audio_level_monitoring not available/failed (non-fatal):', err);
+      }
+    })();
+
+    const setupLevelListener = async () => {
+      try {
+        const unlisten = await listen<AudioLevelUpdate>('audio-levels', (event) => {
+          if (cancelled) return;
+          const levels = event.payload?.levels ?? [];
+          if (levels.length === 0) return;
+
+          hasReceivedLevelRef.current = true;
+          if (fallbackTimeoutRef.current !== null) {
+            clearTimeout(fallbackTimeoutRef.current);
+            fallbackTimeoutRef.current = null;
+          }
+
+          // Prefer the selected mic device's data; otherwise use the first active/loudest entry.
+          const preferred =
+            (micDeviceName && levels.find(l => l.device_name === micDeviceName)) ||
+            levels.reduce((loudest, l) => (l.rms_level > loudest.rms_level ? l : loudest), levels[0]);
+
+          const rms = Math.max(0, Math.min(1, preferred.rms_level ?? 0));
+          const peak = Math.max(0, Math.min(1, preferred.peak_level ?? 0));
+
+          // Log-scale rms for perceptual response, blended with a touch of peak for snappiness.
+          const rmsLog = Math.log10(rms * 9 + 1); // 0..1
+          const level = Math.max(0, Math.min(1, rmsLog * 0.8 + peak * 0.2));
+
+          targetLevelRef.current = level;
+        });
+        if (!cancelled) {
+          unlistenLevels = unlisten;
+        } else {
+          unlisten();
+        }
+      } catch (err) {
+        console.error('Failed to set up audio-levels listener:', err);
+      }
+    };
+
+    setupLevelListener();
+
+    // 2s fallback: if no real audio-levels event has arrived, fall back to the fake animated prop.
+    fallbackTimeoutRef.current = setTimeout(() => {
+      if (!hasReceivedLevelRef.current) {
+        setLiveBarHeights(null);
+      }
+    }, FALLBACK_TIMEOUT_MS);
+
+    // Smoothing loop: lerp current heights toward the target level at ~60fps.
+    const tick = () => {
+      if (cancelled) return;
+
+      const level = targetLevelRef.current;
+      const heights = currentHeightsRef.current;
+
+      const newHeights = BAR_WEIGHTS.map((weight, i) => {
+        // Silence stays essentially flat; small jitter scales with the level so it vanishes at ~0.
+        const jitter = level > 0.01 ? (Math.random() - 0.5) * 0.15 * level : 0;
+        const targetPx = MIN_BAR_PX + Math.max(0, level * weight + jitter) * (MAX_BAR_PX - MIN_BAR_PX);
+        const clampedTarget = Math.max(MIN_BAR_PX, Math.min(MAX_BAR_PX, targetPx));
+        const current = heights[i] ?? MIN_BAR_PX;
+        return current + (clampedTarget - current) * LERP_FACTOR;
+      });
+
+      currentHeightsRef.current = newHeights;
+
+      if (hasReceivedLevelRef.current) {
+        setLiveBarHeights(newHeights.map(h => `${h}px`));
+      }
+
+      rafIdRef.current = requestAnimationFrame(tick);
+    };
+
+    rafIdRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelled = true;
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      if (fallbackTimeoutRef.current !== null) {
+        clearTimeout(fallbackTimeoutRef.current);
+        fallbackTimeoutRef.current = null;
+      }
+      if (unlistenLevels) {
+        unlistenLevels();
+      }
+      // Best-effort stop; ignore failures.
+      invoke('stop_audio_level_monitoring').catch((err) => {
+        console.debug('stop_audio_level_monitoring failed (non-fatal):', err);
+      });
+    };
+  }, [isRecording, isPaused, selectedDevices?.micDevice]);
+
   return (
     <TooltipProvider>
       <div className="flex flex-col space-y-2">
@@ -472,10 +638,10 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                   )}
 
                   <div className="flex items-center space-x-1 mx-4">
-                    {barHeights.map((height, index) => (
+                    {(liveBarHeights ?? barHeights).map((height, index) => (
                       <div
                         key={index}
-                        className={`w-1 rounded-full transition-all duration-200 ${isPaused ? 'bg-orange-500' : 'bg-red-500'
+                        className={`w-1 rounded-full ${liveBarHeights ? '' : 'transition-all duration-200'} ${isPaused ? 'bg-orange-500' : 'bg-red-500'
                           }`}
                         style={{
                           height: isRecording && !isPaused ? height : '4px',
@@ -488,6 +654,23 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
               )}
             </>
           )}
+
+          {/* Ternova Meet: chat con las reuniones, junto a los indicadores */}
+          <div className="w-px h-6 bg-gray-200 mx-1" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={toggleChat}
+                aria-label="Chat con tus reuniones"
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+              >
+                <ChatTeardropText size={18} weight="duotone" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Chat con tus reuniones</p>
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         {/* Show validation status only */}

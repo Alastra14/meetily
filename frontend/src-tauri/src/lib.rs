@@ -259,6 +259,12 @@ async fn start_audio_level_monitoring<R: Runtime>(
         device_names
     );
 
+    // Ternova Meet: durante una grabación los niveles vienen del pipeline real
+    // (live_levels); el monitor simulado queda solo para el preview de dispositivos.
+    if audio::recording_commands::is_recording().await {
+        audio::live_levels::start(app);
+        return Ok(());
+    }
     audio::simple_level_monitor::start_monitoring(app, device_names)
         .await
         .map_err(|e| format!("Failed to start audio level monitoring: {}", e))
@@ -268,6 +274,7 @@ async fn start_audio_level_monitoring<R: Runtime>(
 async fn stop_audio_level_monitoring() -> Result<(), String> {
     log_info!("Stopping audio level monitoring");
 
+    audio::live_levels::stop();
     audio::simple_level_monitor::stop_monitoring()
         .await
         .map_err(|e| format!("Failed to stop audio level monitoring: {}", e))

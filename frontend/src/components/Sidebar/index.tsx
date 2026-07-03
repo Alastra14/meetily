@@ -46,6 +46,7 @@ import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { MessageToast } from '../MessageToast';
 import Logo from '../Logo';
 import Info from '../Info';
+import ThemeToggle from '../ThemeToggle';
 import { ComplianceNotification } from '../ComplianceNotification';
 import { Input } from '../ui/input';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '../ui/input-group';
@@ -561,6 +562,7 @@ const Sidebar: React.FC = () => {
           </Tooltip>
 
           <Info isCollapsed={isCollapsed} />
+          <ThemeToggle isCollapsed={isCollapsed} />
         </div>
       </TooltipProvider>
     );
@@ -869,6 +871,7 @@ const Sidebar: React.FC = () => {
               <span>Settings</span>
             </button>
             <Info isCollapsed={isCollapsed} />
+            <ThemeToggle isCollapsed={isCollapsed} />
             <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-gray-400">
               v0.4.0
             </div>

@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChatTeardropText, PaperPlaneRight, X } from '@phosphor-icons/react';
+import { ArrowLeft, ChatTeardropText, GearSix, PaperPlaneRight, X } from '@phosphor-icons/react';
 import { Loader2 } from 'lucide-react';
 import { useMeetingChat } from '@/hooks/useMeetingChat';
-import type { ChatTarget } from '@/hooks/useMeetingChat';
+import { ChatSettings } from './ChatSettings';
 
 export interface ChatPanelProps {
   open: boolean;
@@ -42,8 +42,11 @@ export function ChatPanel({
   } = useMeetingChat({ meetingId, liveTranscript });
 
   const [input, setInput] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const targetLabel = target === 'ternova' ? 'Servidor Ternova' : 'Local';
 
   useEffect(() => {
     if (open) {
@@ -69,34 +72,65 @@ export function ChatPanel({
     scope === 'current' && meetingTitle ? meetingTitle : 'Chat con tus reuniones';
 
   return (
+    // Acoplado al layout: ocupa espacio real en la ventana (empuja el contenido,
+    // no tapa el resumen). La animación es de ancho, no de translate.
     <aside
-      className={`fixed top-0 right-0 h-full w-[380px] max-w-[90vw] z-50 flex flex-col
-        bg-white dark:bg-card border-l border-gray-200 dark:border-border shadow-2xl
-        transition-transform duration-300 ease-in-out
-        ${open ? 'translate-x-0' : 'translate-x-full'}`}
-      role="dialog"
+      className={`h-screen shrink-0 z-30 flex flex-col overflow-hidden
+        bg-white dark:bg-card border-l border-gray-200 dark:border-border
+        transition-[width] duration-300 ease-in-out
+        ${open ? 'w-[380px]' : 'w-0 border-l-0'}`}
+      role="complementary"
       aria-label="Chat con tus reuniones"
       aria-hidden={!open}
     >
+      <div className="w-[380px] h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 dark:border-border">
         <div className="flex items-center gap-2 min-w-0">
-          <ChatTeardropText size={22} weight="duotone" className="text-blue-600 shrink-0" />
+          {showSettings ? (
+            <button
+              type="button"
+              onClick={() => setShowSettings(false)}
+              aria-label="Volver al chat"
+              className="shrink-0 rounded-md p-1 -ml-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-secondary dark:text-muted-foreground"
+            >
+              <ArrowLeft size={18} />
+            </button>
+          ) : (
+            <ChatTeardropText size={22} weight="duotone" className="text-blue-600 shrink-0" />
+          )}
           <h2 className="text-sm font-semibold text-gray-900 dark:text-foreground truncate">
-            {headerTitle}
+            {showSettings ? 'Ajustes del chat' : headerTitle}
           </h2>
         </div>
-        <button
-          type="button"
-          onClick={() => onOpenChange(false)}
-          aria-label="Cerrar chat"
-          className="shrink-0 rounded-md p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-secondary dark:text-muted-foreground"
-        >
-          <X size={18} />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          {!showSettings && (
+            <button
+              type="button"
+              onClick={() => setShowSettings(true)}
+              aria-label="Ajustes del chat"
+              className="rounded-md p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-secondary dark:text-muted-foreground"
+            >
+              <GearSix size={18} weight="duotone" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            aria-label="Cerrar chat"
+            className="rounded-md p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-secondary dark:text-muted-foreground"
+          >
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
-      {/* Body: mensajes */}
+      {/* Body: mensajes o ajustes */}
+      {showSettings ? (
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <ChatSettings target={target} onTargetChange={setTarget} />
+        </div>
+      ) : (
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center px-2">
@@ -158,8 +192,10 @@ export function ChatPanel({
 
         <div ref={messagesEndRef} />
       </div>
+      )}
 
       {/* Footer */}
+      {!showSettings && (
       <div className="border-t border-gray-200 dark:border-border px-4 py-3 space-y-2.5">
         {/* Alcance */}
         <div className="flex items-center gap-2" role="group" aria-label="Alcance del chat">
@@ -195,30 +231,15 @@ export function ChatPanel({
           </button>
         </div>
 
-        {/* Motor */}
-        <div className="flex items-center gap-2" role="group" aria-label="Motor de chat">
-          <span className="text-xs text-gray-500 dark:text-muted-foreground">Motor:</span>
-          {(
-            [
-              { value: 'local' as ChatTarget, label: 'Local' },
-              { value: 'ternova' as ChatTarget, label: 'Servidor Ternova' },
-            ]
-          ).map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              aria-label={`Usar motor ${option.label}`}
-              onClick={() => setTarget(option.value)}
-              className={`text-xs rounded-full px-3 py-1 border transition-colors ${
-                target === option.value
-                  ? 'bg-gray-900 text-white border-gray-900 dark:bg-primary dark:text-primary-foreground dark:border-primary'
-                  : 'bg-white dark:bg-transparent text-gray-600 dark:text-muted-foreground border-gray-200 dark:border-border hover:border-gray-400'
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        {/* Motor activo (abre ajustes) */}
+        <button
+          type="button"
+          onClick={() => setShowSettings(true)}
+          aria-label={`Motor activo: ${targetLabel}. Abrir ajustes del chat`}
+          className="text-xs text-gray-500 dark:text-muted-foreground hover:text-gray-900 dark:hover:text-foreground hover:underline transition-colors"
+        >
+          Motor: {targetLabel}
+        </button>
 
         {/* Input */}
         <div className="flex items-end gap-2">
@@ -245,6 +266,8 @@ export function ChatPanel({
             <PaperPlaneRight size={18} weight="duotone" />
           </button>
         </div>
+      </div>
+      )}
       </div>
     </aside>
   );

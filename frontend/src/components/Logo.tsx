@@ -14,7 +14,9 @@ const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(({ isCollapsed }, re
       {isCollapsed ? (
         <DialogTrigger asChild>
           <button ref={ref} className="flex items-center justify-start mb-2 cursor-pointer bg-transparent border-none p-0 hover:opacity-80 transition-opacity">
-            <Image src="/logo-collapsed.png" alt="Ternova Meet" width={26} height={38} />
+            {/* T indigo en claro, T blanca en oscuro */}
+            <Image src="/logo-collapsed.png" alt="Ternova Meet" width={26} height={38} className="dark:hidden" />
+            <Image src="/logo-collapsed-dark.png" alt="Ternova Meet" width={26} height={38} className="hidden dark:block" />
           </button>
         </DialogTrigger>
       ) : (
