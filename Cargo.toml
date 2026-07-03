@@ -16,3 +16,10 @@ anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.32.0", features = ["full"] }
+
+# Ternova Meet: cidre vendorizado (MIT, ver vendor/cidre/LICENSE.txt) con un único
+# cambio: build.rs compila los shims ObjC (pomace) con clang/ar cuando no hay
+# Xcode completo (solo Command Line Tools). Con Xcode instalado usa xcodebuild
+# igual que el upstream, así que no cambia el comportamiento en máquinas dev/CI.
+[patch."https://github.com/yury/cidre"]
+cidre = { path = "vendor/cidre" }
