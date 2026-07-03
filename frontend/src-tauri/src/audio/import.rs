@@ -262,10 +262,136 @@ impl Drop for TempDownloadCleanup {
     }
 }
 
+/// ¿La URL es de Teams/SharePoint/Stream (requiere sesión del navegador)?
+fn is_microsoft_meeting_url(url: &str) -> bool {
+    let u = url.to_lowercase();
+    u.contains("teams.microsoft.com")
+        || u.contains("sharepoint.com")
+        || u.contains("microsoftstream")
+}
+
+/// Localiza el binario de yt-dlp de forma multiplataforma (macOS y Windows).
+fn find_ytdlp() -> Option<PathBuf> {
+    let candidates: &[&str] = if cfg!(target_os = "windows") {
+        &["yt-dlp.exe", "yt-dlp"]
+    } else {
+        &[
+            "yt-dlp",
+            "/opt/homebrew/bin/yt-dlp",
+            "/usr/local/bin/yt-dlp",
+            "/usr/bin/yt-dlp",
+        ]
+    };
+    for c in candidates {
+        let probe = std::process::Command::new(c)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if matches!(probe, Ok(s) if s.success()) {
+            return Some(PathBuf::from(c));
+        }
+    }
+    None
+}
+
+/// Descarga un enlace de Teams/SharePoint/Stream con yt-dlp usando las cookies
+/// del navegador del usuario (así funciona con enlaces autenticados). Prueba
+/// navegadores en orden: chrome, edge y safari (solo macOS).
+async fn download_via_ytdlp<R: Runtime>(app: &AppHandle<R>, url: &str) -> Result<PathBuf> {
+    let Some(ytdlp) = find_ytdlp() else {
+        let hint = if cfg!(target_os = "windows") {
+            "Instálalo con: winget install yt-dlp (o choco install yt-dlp)"
+        } else {
+            "Instálalo con: brew install yt-dlp"
+        };
+        return Err(anyhow!(
+            "Este enlace de Teams/SharePoint requiere yt-dlp y no está instalado. {}",
+            hint
+        ));
+    };
+
+    let out_base = std::env::temp_dir().join(format!("ternova-meet-teams-{}", Uuid::new_v4()));
+    let out_tpl = format!("{}.%(ext)s", out_base.display());
+
+    let mut browsers: Vec<&str> = vec!["chrome", "edge"];
+    if cfg!(target_os = "macos") {
+        browsers.push("safari");
+    }
+
+    let mut last_err = String::new();
+    for (i, browser) in browsers.iter().enumerate() {
+        emit_progress(
+            app,
+            "downloading",
+            3 + i as u32,
+            &format!("Descargando de Teams con tu sesión de {}…", browser),
+        );
+
+        let ytdlp_c = ytdlp.clone();
+        let url_c = url.to_string();
+        let tpl_c = out_tpl.clone();
+        let browser_c = browser.to_string();
+        let output = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(&ytdlp_c)
+                .args(["--cookies-from-browser", &browser_c])
+                // video+audio DASH primero; fallback a lo mejor disponible
+                .args(["-f", "dash-vcopy+dash-audcopy/bestvideo+bestaudio/best"])
+                .args(["--merge-output-format", "mp4"])
+                .args(["--force-overwrites", "--no-playlist"])
+                .args(["-o", &tpl_c])
+                .arg(&url_c)
+                .output()
+        })
+        .await
+        .map_err(|e| anyhow!("yt-dlp task failed: {}", e))?
+        .map_err(|e| anyhow!("No se pudo ejecutar yt-dlp: {}", e))?;
+
+        if IMPORT_CANCELLED.load(Ordering::SeqCst) {
+            return Err(anyhow!("Import cancelled"));
+        }
+
+        if output.status.success() {
+            // localizar el archivo producido (out_base.<ext>)
+            let parent = out_base.parent().unwrap_or(Path::new("."));
+            let stem = out_base
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
+            if let Ok(rd) = std::fs::read_dir(parent) {
+                for e in rd.flatten() {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    if name.starts_with(&stem) {
+                        info!("yt-dlp descargó {}", e.path().display());
+                        return Ok(e.path());
+                    }
+                }
+            }
+            return Err(anyhow!("yt-dlp terminó pero no se encontró el archivo descargado"));
+        }
+
+        last_err = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .rev()
+            .find(|l| l.contains("ERROR") || !l.trim().is_empty())
+            .unwrap_or("error desconocido")
+            .to_string();
+        warn!("yt-dlp con {} falló: {}", browser, last_err);
+    }
+
+    Err(anyhow!(
+        "No se pudo descargar el enlace de Teams con las cookies de tu navegador ({}). \
+         Asegúrate de haber abierto la grabación en Chrome/Edge con tu sesión. Detalle: {}",
+        browsers.join("/"),
+        last_err
+    ))
+}
+
 /// Descarga una URL remota a un archivo temporal por streaming, emitiendo
 /// progreso. Usado para importar grabaciones de Teams/Stream/SharePoint vía URL
 /// directa (no autenticada). Las URLs que requieren cookies de sesión se
-/// resuelven en el flujo asistido (yt-dlp/skill), que deja un archivo local.
+/// resuelven con yt-dlp (`download_via_ytdlp`).
 async fn download_url_to_temp<R: Runtime>(app: &AppHandle<R>, url: &str) -> Result<PathBuf> {
     use futures_util::StreamExt;
     use tokio::io::AsyncWriteExt;
@@ -280,6 +406,22 @@ async fn download_url_to_temp<R: Runtime>(app: &AppHandle<R>, url: &str) -> Resu
         .map_err(|e| anyhow!("Failed to fetch URL: {}", e))?;
     if !resp.status().is_success() {
         return Err(anyhow!("Download failed: HTTP {}", resp.status()));
+    }
+
+    // La URL devolvió una página web, no un archivo de audio/video (típico de
+    // enlaces de recap de Teams o SharePoint que requieren sesión).
+    if let Some(ct) = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    {
+        if ct.contains("text/html") {
+            return Err(anyhow!(
+                "El enlace apunta a la página de la reunión, no al archivo de audio/video. \
+                 Para enlaces de Teams/SharePoint usa el enlace tal cual (la app lo descargará \
+                 con tu sesión del navegador vía yt-dlp) o pega una URL directa al archivo."
+            ));
+        }
     }
 
     // Inferir extensión desde Content-Type o la URL (default mp4).
@@ -432,7 +574,13 @@ async fn run_import<R: Runtime>(
     let mut temp_cleanup = TempDownloadCleanup(None);
     let source = if is_url {
         emit_progress(&app, "downloading", 2, "Downloading from URL...");
-        let path = download_url_to_temp(&app, &source_path).await?;
+        // Enlaces de Teams/SharePoint/Stream requieren la sesión del navegador:
+        // se descargan con yt-dlp + cookies. El resto, por streaming directo.
+        let path = if is_microsoft_meeting_url(&source_path) {
+            download_via_ytdlp(&app, &source_path).await?
+        } else {
+            download_url_to_temp(&app, &source_path).await?
+        };
         temp_cleanup.0 = Some(path.clone());
         path
     } else {

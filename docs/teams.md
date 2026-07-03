@@ -20,10 +20,14 @@ Las reuniones quedan etiquetadas con la columna `meetings.source`
 
 ### URLs autenticadas (cookies de sesión)
 
-Stream/SharePoint suele requerir la sesión del usuario (cookies). El backend
-directo no las tiene, así que para esos enlaces se mantiene el **flujo asistido**
-(skills `teams-download-today` / `meetily-import` con `yt-dlp`), que deja un
-archivo local; luego se importa por la pestaña **Archivo**. El pipeline externo
+Stream/SharePoint suele requerir la sesión del usuario (cookies). Desde la
+iteración 2 la app lo resuelve **integrado**: al pegar un enlace de
+`teams.microsoft.com` / `*.sharepoint.com` / Stream en la pestaña URL, el backend
+lo descarga con **yt-dlp + cookies del navegador** (Chrome → Edge → Safari en
+macOS; Chrome → Edge en Windows) y sigue el pipeline normal. Requiere yt-dlp
+instalado (`brew install yt-dlp` / `winget install yt-dlp`); si falta, el diálogo
+muestra el error con instrucciones. El flujo asistido por skills sigue disponible
+como plan B. El pipeline externo
 de Python que escribe directo al SQLite sigue funcionando y sus reuniones se
 marcan como `'teams'` mediante la migración `20260616000000_add_meeting_source.sql`.
 

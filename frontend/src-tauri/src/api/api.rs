@@ -1427,3 +1427,56 @@ pub async fn api_test_custom_openai_connection<R: Runtime>(
         }
     }
 }
+
+/// Ternova Meet — prueba de conexión al ASR remoto (DGX / OpenAI-compatible).
+/// Hace GET {endpoint}/models (con Bearer opcional) y reporta los modelos vistos.
+#[tauri::command]
+pub async fn api_test_remote_transcription(
+    endpoint: String,
+    api_key: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let endpoint = endpoint.trim().trim_end_matches('/').to_string();
+    if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
+        return Err("El endpoint debe empezar con http:// o https://".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let mut req = client.get(format!("{}/models", endpoint));
+    if let Some(key) = api_key.as_deref().filter(|k| !k.trim().is_empty()) {
+        req = req.bearer_auth(key.trim());
+    }
+
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let models: Vec<String> = resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| {
+                    v.get("data").and_then(|d| d.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| m.get("id").and_then(|i| i.as_str()).map(String::from))
+                            .collect()
+                    })
+                })
+                .unwrap_or_default();
+            Ok(serde_json::json!({
+                "ok": true,
+                "message": format!("Conexión OK ({} modelos)", models.len()),
+                "models": models,
+            }))
+        }
+        Ok(resp) => Ok(serde_json::json!({
+            "ok": false,
+            "message": format!("El servidor respondió HTTP {}", resp.status()),
+        })),
+        Err(e) => Ok(serde_json::json!({
+            "ok": false,
+            "message": format!("No se pudo conectar: {}", e),
+        })),
+    }
+}

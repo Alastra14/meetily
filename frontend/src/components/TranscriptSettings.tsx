@@ -4,9 +4,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
-import { Eye, EyeOff, Lock, Unlock } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, Loader2 } from 'lucide-react';
 import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
+import { toast } from 'sonner';
 
 
 export interface TranscriptModelProps {
@@ -37,6 +38,32 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
             : 'whisper-large-v3'
     );
     const [savingRemote, setSavingRemote] = useState<boolean>(false);
+    const [testingRemote, setTestingRemote] = useState<boolean>(false);
+
+    const handleTestRemote = async () => {
+        const endpoint = remoteEndpoint.trim();
+        if (!endpoint) return;
+        setTestingRemote(true);
+        try {
+            const result = await invoke<{ ok: boolean; message: string; models?: string[] }>(
+                'api_test_remote_transcription',
+                { endpoint, apiKey: apiKey || null }
+            );
+            if (result.ok) {
+                const modelsSuffix = result.models && result.models.length > 0
+                    ? ` Modelos detectados: ${result.models.join(', ')}`
+                    : '';
+                toast.success(`${result.message}${modelsSuffix}`);
+            } else {
+                toast.error(result.message);
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            toast.error(message);
+        } finally {
+            setTestingRemote(false);
+        }
+    };
 
     const handleSaveRemote = async () => {
         setSavingRemote(true);
@@ -244,14 +271,31 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                     className="focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                                 />
                             </div>
-                            <Button
-                                type="button"
-                                onClick={handleSaveRemote}
-                                disabled={savingRemote || !remoteEndpoint.trim()}
-                                className="bg-blue-600 hover:bg-blue-700 text-white"
-                            >
-                                {savingRemote ? 'Guardando…' : 'Guardar transcripción remota'}
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    onClick={handleSaveRemote}
+                                    disabled={savingRemote || !remoteEndpoint.trim()}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                    {savingRemote ? 'Guardando…' : 'Guardar transcripción remota'}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleTestRemote}
+                                    disabled={testingRemote || !remoteEndpoint.trim()}
+                                >
+                                    {testingRemote ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Probando…
+                                        </>
+                                    ) : (
+                                        'Probar conexión'
+                                    )}
+                                </Button>
+                            </div>
                         </div>
                     )}
 

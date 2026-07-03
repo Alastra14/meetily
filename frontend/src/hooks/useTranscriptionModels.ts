@@ -8,7 +8,7 @@ export interface RawModelInfo {
 }
 
 export interface ModelOption {
-  provider: 'whisper' | 'parakeet';
+  provider: 'whisper' | 'parakeet' | 'remote';
   name: string;
   displayName: string;
   size_mb: number;
@@ -18,6 +18,15 @@ interface TranscriptModelConfig {
   provider?: string;
   model?: string;
 }
+
+interface RemoteTranscriptConfig {
+  provider?: string;
+  model?: string;
+  apiKey?: string | null;
+  remoteEndpoint?: string | null;
+}
+
+const DEFAULT_REMOTE_MODEL = 'whisper-large-v3';
 
 /**
  * Custom hook for fetching and managing transcription models (Whisper and Parakeet).
@@ -32,6 +41,7 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
   const [availableModels, setAvailableModels] = useState<ModelOption[]>([]);
   const [selectedModelKey, setSelectedModelKey] = useState<string>('');
   const [loadingModels, setLoadingModels] = useState(false);
+  const [remoteConfigured, setRemoteConfigured] = useState(false);
   // Track whether the user has manually changed the model selection
   const userSelectedRef = useRef(false);
 
@@ -77,6 +87,27 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
       console.error('Failed to fetch Parakeet models:', err);
     }
 
+    // Ternova Meet: siempre agregar la opción de transcripción remota (DGX) al final
+    let remoteModelName = DEFAULT_REMOTE_MODEL;
+    let isRemoteConfigured = false;
+    try {
+      const remoteConfig = await invoke<RemoteTranscriptConfig>('api_get_transcript_config');
+      if (remoteConfig?.model) {
+        remoteModelName = remoteConfig.model;
+      }
+      isRemoteConfigured =
+        remoteConfig?.provider === 'remote' || !!remoteConfig?.remoteEndpoint?.trim();
+    } catch (err) {
+      console.error('Failed to fetch remote transcript config:', err);
+    }
+    setRemoteConfigured(isRemoteConfigured);
+    allModels.push({
+      provider: 'remote',
+      name: remoteModelName,
+      displayName: '🛰️ Servidor Ternova (DGX)',
+      size_mb: 0,
+    });
+
     setAvailableModels(allModels);
 
     // Set default model based on user's saved configuration
@@ -117,5 +148,6 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
     loadingModels,
     fetchModels,
     resetSelection,
+    remoteConfigured,
   };
 }

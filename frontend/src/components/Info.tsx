@@ -1,5 +1,5 @@
 import React from "react";
-import { Info as InfoIcon } from "lucide-react";
+import { Info as InfoIcon } from "@phosphor-icons/react";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { VisuallyHidden } from "./ui/visually-hidden";
 import { About } from "./About";
@@ -21,7 +21,7 @@ const Info = React.forwardRef<HTMLButtonElement, InfoProps>(({ isCollapsed }, re
           }`}
           title="About Ternova Meet"
         >
-          <InfoIcon className={`text-gray-600 ${isCollapsed ? "w-5 h-5" : "w-4 h-4"}`} />
+          <InfoIcon weight="duotone" className={`text-gray-600 ${isCollapsed ? "w-5 h-5" : "w-4 h-4"}`} />
           {!isCollapsed && (
             <span className="ml-2 text-sm text-gray-700">About</span>
           )}

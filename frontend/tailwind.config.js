@@ -8,16 +8,22 @@ module.exports = {
   ],
   theme: {
   	extend: {
+  		// Ternova Meet: Gosha (display/títulos), Space Grotesk (subtítulos),
+  		// Montserrat (body). OJO: nunca dejar aquí una var() que no exista —
+  		// una var indefinida invalida TODO el font-family y cae a serif.
   		fontFamily: {
   			sans: [
-  				'var(--font-sans)',
-  				'var(--font-source-sans-3)',
+  				'var(--font-body)',
+  				'system-ui',
+  				'sans-serif'
+  			],
+  			subtitle: [
+  				'var(--font-subtitle)',
   				'system-ui',
   				'sans-serif'
   			],
   			display: [
   				'var(--font-display)',
-  				'var(--font-sans)',
   				'sans-serif'
   			]
   		},

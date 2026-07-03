@@ -38,6 +38,7 @@ pub(crate) use perf_trace;
 pub mod analytics;
 pub mod api;
 pub mod audio;
+pub mod chat;
 pub mod config;
 pub mod console_utils;
 pub mod database;
@@ -643,6 +644,7 @@ pub fn run() {
             api::api_get_transcript_config,
             api::api_save_transcript_config,
             api::api_save_transcript_remote_config,
+            api::api_test_remote_transcription,
             api::api_get_transcript_api_key,
             api::api_delete_meeting,
             api::api_get_meeting,
@@ -747,6 +749,7 @@ pub fn run() {
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
             audio::import::start_import_audio_command,
+            chat::chat_with_meetings,
             audio::import::cancel_import_command,
             audio::import::is_import_in_progress_command,
         ])

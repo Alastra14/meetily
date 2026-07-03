@@ -1,7 +1,25 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload } from 'lucide-react';
+import {
+  CaretDown,
+  CaretRight,
+  File as FileIcon,
+  GearSix,
+  CaretCircleLeft,
+  CaretCircleRight,
+  Calendar,
+  House,
+  Trash,
+  Microphone,
+  Square,
+  Plus,
+  PencilSimple,
+  Notebook,
+  MagnifyingGlass,
+  X,
+  UploadSimple,
+} from '@phosphor-icons/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -466,7 +484,7 @@ const Sidebar: React.FC = () => {
                 className={`p-2 rounded-lg transition-colors duration-150 ${isHomePage ? 'bg-gray-100' : 'hover:bg-gray-100'
                   }`}
               >
-                <Home className="w-5 h-5 text-gray-600" />
+                <House weight="duotone" className="w-5 h-5 text-gray-600" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -482,9 +500,9 @@ const Sidebar: React.FC = () => {
                 className={`p-2 ${isRecording ? 'bg-red-500 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'} rounded-full transition-colors duration-150 shadow-sm`}
               >
                 {isRecording ? (
-                  <Square className="w-5 h-5 text-white" />
+                  <Square weight="duotone" className="w-5 h-5 text-white" />
                 ) : (
-                  <Mic className="w-5 h-5 text-white" />
+                  <Microphone weight="duotone" className="w-5 h-5 text-white" />
                 )}
               </button>
             </TooltipTrigger>
@@ -500,7 +518,7 @@ const Sidebar: React.FC = () => {
                   onClick={() => openImportDialog()}
                   className="p-2 rounded-lg transition-colors duration-150 hover:bg-blue-100 bg-blue-50"
                 >
-                  <Upload className="w-5 h-5 text-blue-600" />
+                  <UploadSimple weight="duotone" className="w-5 h-5 text-blue-600" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">
@@ -519,7 +537,7 @@ const Sidebar: React.FC = () => {
                 className={`p-2 rounded-lg transition-colors duration-150 ${isMeetingPage ? 'bg-gray-100' : 'hover:bg-gray-100'
                   }`}
               >
-                <NotebookPen className="w-5 h-5 text-gray-600" />
+                <Notebook weight="duotone" className="w-5 h-5 text-gray-600" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -534,7 +552,7 @@ const Sidebar: React.FC = () => {
                 className={`p-2 rounded-lg transition-colors duration-150 ${isSettingsPage ? 'bg-gray-100' : 'hover:bg-gray-100'
                   }`}
               >
-                <Settings className="w-5 h-5 text-gray-600" />
+                <GearSix weight="duotone" className="w-5 h-5 text-gray-600" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -590,16 +608,16 @@ const Sidebar: React.FC = () => {
           {item.type === 'folder' ? (
             <>
               {item.id === 'meetings' ? (
-                <Calendar className="w-4 h-4 mr-2" />
+                <Calendar weight="duotone" className="w-4 h-4 mr-2" />
               ) : item.id === 'notes' ? (
-                <Calendar className="w-4 h-4 mr-2" />
+                <Calendar weight="duotone" className="w-4 h-4 mr-2" />
               ) : null}
               <span className={depth === 0 ? "" : "font-medium"}>{item.title}</span>
               <div className="ml-auto">
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                  <CaretDown weight="duotone" className="w-4 h-4 text-gray-500" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-gray-500" />
+                  <CaretRight weight="duotone" className="w-4 h-4 text-gray-500" />
                 )}
               </div>
               {searchQuery && item.id === 'meetings' && isSearching && (
@@ -611,11 +629,11 @@ const Sidebar: React.FC = () => {
               <div className="flex items-center w-full">
                 {isMeetingItem ? (
                   <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 bg-gray-100">
-                    <File className="w-3.5 h-3.5 text-gray-600" />
+                    <FileIcon weight="duotone" className="w-3.5 h-3.5 text-gray-600" />
                   </div>
                 ) : (
                   <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 bg-blue-100">
-                    <Plus className="w-3.5 h-3.5 text-blue-600" />
+                    <Plus weight="duotone" className="w-3.5 h-3.5 text-blue-600" />
                   </div>
                 )}
                 <span className="flex-1 break-words">{item.title}</span>
@@ -634,7 +652,7 @@ const Sidebar: React.FC = () => {
                       className="hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 flex-shrink-0"
                       aria-label="Edit meeting title"
                     >
-                      <Pencil className="w-4 h-4" />
+                      <PencilSimple weight="duotone" className="w-4 h-4" />
                     </button>
                     <button
                       onClick={(e) => {
@@ -644,7 +662,7 @@ const Sidebar: React.FC = () => {
                       className="hover:text-red-600 p-1 rounded-md hover:bg-red-50 flex-shrink-0"
                       aria-label="Delete meeting"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash weight="duotone" className="w-4 h-4" />
                     </button>
                   </div>
                 )}
@@ -677,9 +695,9 @@ const Sidebar: React.FC = () => {
         style={{ transform: 'translateX(50%)' }}
       >
         {isCollapsed ? (
-          <ChevronRightCircle className="w-6 h-6" />
+          <CaretCircleRight weight="duotone" className="w-6 h-6" />
         ) : (
-          <ChevronLeftCircle className="w-6 h-6" />
+          <CaretCircleLeft weight="duotone" className="w-6 h-6" />
         )}
       </button>
 
@@ -708,14 +726,14 @@ const Sidebar: React.FC = () => {
                       onChange={(e) => handleSearchChange(e.target.value)}
                     />
                     <InputGroupAddon>
-                      <SearchIcon />
+                      <MagnifyingGlass weight="duotone" />
                     </InputGroupAddon>
                     {searchQuery &&
                       <InputGroupAddon align={'inline-end'}>
                         <InputGroupButton
                           onClick={() => handleSearchChange('')}
                         >
-                          <X />
+                          <X weight="duotone" />
                         </InputGroupButton>
                       </InputGroupAddon>
                     }
@@ -735,7 +753,7 @@ const Sidebar: React.FC = () => {
                 onClick={() => router.push('/')}
                 className="p-3  text-lg font-semibold items-center hover:bg-gray-100 h-10   flex mx-3 mt-3 rounded-lg cursor-pointer"
               >
-                <Home className="w-4 h-4 mr-2" />
+                <House weight="duotone" className="w-4 h-4 mr-2" />
                 <span>Home</span>
               </div>
             )}
@@ -752,7 +770,7 @@ const Sidebar: React.FC = () => {
                     <div
                       className="flex items-center transition-all duration-150 p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg"
                     >
-                      <NotebookPen className="w-4 h-4 mr-2 text-gray-600" />
+                      <Notebook weight="duotone" className="w-4 h-4 mr-2 text-gray-600" />
                       <span className="text-gray-700">{item.title}</span>
                       {searchQuery && item.id === 'meetings' && isSearching && (
                         <span className="ml-2 text-xs text-blue-500 animate-pulse">Searching...</span>
@@ -822,12 +840,12 @@ const Sidebar: React.FC = () => {
             >
               {isRecording ? (
                 <>
-                  <Square className="w-4 h-4 mr-2" />
+                  <Square weight="duotone" className="w-4 h-4 mr-2" />
                   <span>Recording in progress...</span>
                 </>
               ) : (
                 <>
-                  <Mic className="w-4 h-4 mr-2" />
+                  <Microphone weight="duotone" className="w-4 h-4 mr-2" />
                   <span>Start Recording</span>
                 </>
               )}
@@ -838,7 +856,7 @@ const Sidebar: React.FC = () => {
                 onClick={() => openImportDialog()}
                 className="w-full flex items-center justify-center px-3 py-2 mt-1 text-sm font-medium text-gray-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors shadow-sm"
               >
-                <Upload className="w-4 h-4 mr-2" />
+                <UploadSimple weight="duotone" className="w-4 h-4 mr-2" />
                 <span>Importar grabación / Teams</span>
               </button>
             )}
@@ -847,7 +865,7 @@ const Sidebar: React.FC = () => {
               onClick={() => router.push('/settings')}
               className="w-full flex items-center justify-center px-3 py-1.5 mt-1 mb-1 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors shadow-sm"
             >
-              <Settings className="w-4 h-4 mr-2" />
+              <GearSix weight="duotone" className="w-4 h-4 mr-2" />
               <span>Settings</span>
             </button>
             <Info isCollapsed={isCollapsed} />

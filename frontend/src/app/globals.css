@@ -149,9 +149,15 @@
     height: 100%;
   }
 
-  /* Ternova Meet — headings con la tipografía display de marca (Gosha Sans) */
-  h1, h2, h3 {
-    font-family: var(--font-display), var(--font-sans), sans-serif;
+  /* Ternova Meet — jerarquía tipográfica de marca:
+     Gosha Sans (display) para títulos, Space Grotesk para subtítulos,
+     Montserrat (via .font-sans en body) para el cuerpo.
+     Las var() llevan fallback para no invalidar la declaración si faltan. */
+  h1, h2 {
+    font-family: var(--font-display, sans-serif);
+  }
+  h3, h4, h5 {
+    font-family: var(--font-subtitle, sans-serif);
   }
 
   /* Make the window draggable */
@@ -220,4 +226,39 @@
   [data-node-type] {
     overflow: visible !important;
   }
+}
+
+/* ===== Ternova Meet — modo oscuro como capa de tema =====
+   Los componentes del upstream usan utilidades claras hardcodeadas (bg-white,
+   gray-*). En vez de editar ~40 componentes (imposible de mergear), se
+   sobreescriben aquí las utilidades más usadas bajo .dark. Cobertura por patrón,
+   no exhaustiva: si un rincón queda claro, se añade su override aquí. */
+@layer utilities {
+  .dark .bg-white { background-color: hsl(var(--card)); }
+  .dark .bg-gray-50, .dark .bg-gray-100 { background-color: hsl(var(--secondary)); }
+  .dark .bg-gray-200 { background-color: hsl(262 74% 26%); }
+  .dark .bg-blue-50, .dark .bg-blue-100 { background-color: hsl(262 81% 21%); }
+  .dark .bg-red-50 { background-color: hsl(3 54% 18%); }
+  .dark .bg-green-50 { background-color: hsl(141 40% 14%); }
+  .dark .bg-yellow-50, .dark .bg-amber-50, .dark .bg-orange-50 { background-color: hsl(35 60% 14%); }
+
+  .dark .text-gray-900, .dark .text-gray-800 { color: hsl(0 0% 96%); }
+  .dark .text-gray-700, .dark .text-gray-600 { color: hsl(256 15% 80%); }
+  .dark .text-gray-500, .dark .text-gray-400 { color: hsl(256 12% 65%); }
+  .dark .text-blue-700, .dark .text-blue-800 { color: hsl(257 60% 78%); }
+  .dark .text-blue-600 { color: hsl(257 55% 72%); }
+
+  .dark .border-gray-200, .dark .border-gray-300, .dark .border-gray-100 { border-color: hsl(var(--border)); }
+  .dark .border-white { border-color: hsl(var(--border)); }
+  .dark .divide-gray-200 > * + * { border-color: hsl(var(--border)); }
+
+  .dark .hover\:bg-gray-50:hover, .dark .hover\:bg-gray-100:hover { background-color: hsl(262 74% 26%); }
+  .dark .hover\:bg-gray-200:hover { background-color: hsl(262 70% 30%); }
+  .dark .hover\:bg-blue-50:hover, .dark .hover\:bg-blue-100:hover { background-color: hsl(262 74% 26%); }
+  .dark .hover\:bg-blue-200:hover { background-color: hsl(262 70% 30%); }
+  .dark .hover\:text-gray-900:hover, .dark .hover\:text-gray-700:hover { color: hsl(0 0% 96%); }
+
+  /* Scrollbar oscura */
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: hsl(262 60% 35%); }
+  .dark .custom-scrollbar { scrollbar-color: hsl(262 60% 35%) transparent; }
 }

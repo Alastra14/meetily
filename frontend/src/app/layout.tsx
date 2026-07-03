@@ -8,7 +8,8 @@ import MainContent from '@/components/MainContent'
 import AnalyticsProvider from '@/components/AnalyticsProvider'
 import { Toaster, toast } from 'sonner'
 import "sonner/dist/styles.css"
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import { ChatDock } from '@/components/Chat/ChatDock'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -27,14 +28,22 @@ import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
 
 
-// Ternova Meet — tipografías de marca (Ternova Design System 2), cargadas en
-// local para funcionar 100% offline (sin Google Fonts).
-// Space Grotesk = cuerpo/UI; Gosha Sans = display/headings.
+// Ternova Meet — tipografías de marca, cargadas en local para funcionar 100%
+// offline (sin Google Fonts). Spec: Gosha Sans = títulos (display),
+// Space Grotesk = subtítulos, Montserrat = cuerpo/UI.
+const montserrat = localFont({
+  src: [
+    { path: '../../public/fonts/Montserrat-VariableFont_wght.ttf', weight: '100 900', style: 'normal' },
+  ],
+  variable: '--font-body',
+  display: 'swap',
+})
+
 const spaceGrotesk = localFont({
   src: [
     { path: '../../public/fonts/SpaceGrotesk-VariableFont_wght.ttf', weight: '300 700', style: 'normal' },
   ],
-  variable: '--font-sans',
+  variable: '--font-subtitle',
   display: 'swap',
 })
 
@@ -46,6 +55,22 @@ const goshaSans = localFont({
   variable: '--font-display',
   display: 'swap',
 })
+
+// Ternova Meet — sigue el tema del sistema togglendo la clase `dark` en <html>
+// (tailwind darkMode: ['class']). La ventana Tauri ya no fija theme, así que
+// el chrome nativo también sigue al sistema.
+function SystemThemeWatcher() {
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = (dark: boolean) =>
+      document.documentElement.classList.toggle('dark', dark)
+    apply(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => apply(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return null
+}
 
 // Module-level component — stable reference across RootLayout re-renders.
 // Defined here (not inside RootLayout) so React never sees a new function type
@@ -246,7 +271,7 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={`${spaceGrotesk.variable} ${goshaSans.variable} font-sans antialiased`}>
+      <body className={`${montserrat.variable} ${spaceGrotesk.variable} ${goshaSans.variable} font-sans antialiased`}>
         <AnalyticsProvider>
           <RecordingStateProvider>
             <TranscriptProvider>
@@ -261,6 +286,7 @@ export default function RootLayout({
                               {/* Download progress toast provider - listens for background downloads */}
                               <DownloadProgressToastProvider />
 
+                              <SystemThemeWatcher />
                               {/* Show onboarding or main app */}
                               {showOnboarding ? (
                                 <OnboardingFlow onComplete={handleOnboardingComplete} />
@@ -268,6 +294,10 @@ export default function RootLayout({
                                 <div className="flex">
                                   <Sidebar />
                                   <MainContent>{children}</MainContent>
+                                  {/* Ternova Meet: chat con las reuniones (panel lateral) */}
+                                  <Suspense fallback={null}>
+                                    <ChatDock />
+                                  </Suspense>
                                 </div>
                               )}
                               {/* Import audio overlay and dialog */}
