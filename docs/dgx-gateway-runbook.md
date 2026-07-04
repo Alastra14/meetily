@@ -54,6 +54,20 @@ pnpm tauri:build
 El usuario pega su **API key** en Ajustes → Transcripción / Chat (campo "API key" ya existe).
 Modelos: transcripción `parakeet` (o `whisper-large-v3`), resumen/chat `qwen3.6-35b`.
 
-## 7. Fase 2 (modernización Azure, documentada)
-Migrar el gateway a **Azure APIM + Entra + Key Vault + App Insights**; IaC en Terraform; modelos
-on-prem vía Private Endpoint/híbrido. Cierra el Waiver.
+## 7. Hardening del prototipo (criterio de David — [[Criterio de David]])
+Barato y alto valor, hacer esta semana:
+- **Secretos fuera de git:** `LITELLM_MASTER_KEY` y `DATABASE_URL` por `.env`/Key Vault (nunca en repo).
+- **Backup del Postgres:** `deploy/gateway/backup-postgres.sh` en cron diario (keys + histórico de consumo).
+- **Red cerrada:** `lockdown-raw-ports.sh` — que vLLM `:8000` y el Postgres NO sean alcanzables por
+  fuera del gateway.
+- **Log de auditoría/FinOps:** por virtual key queda quién/modelo/cuándo; exportar consumo por
+  centro de costo (LiteLLM `/spend`).
+- **GPU:** dejar `--gpu-memory-utilization 0.30` (script `~/lower-vllm-030.sh`) — memoria unificada, si se satura reinicia.
+- **Bus-factor:** este runbook + un segundo responsable del despliegue (que no quede solo en una cabeza).
+- **Contrato versionado `/v1`** desde ya (la app de toda la org depende de él).
+- **Dato sensible:** transcripciones = Confidencial → TDR firmado con dueño del dato antes de producción.
+
+## 8. Fase 2 (modernización Azure, documentada)
+Migrar/**envolver** con un **BFF/gateway** (Entra/OAuth2-JWT; Spring Cloud Gateway candidato si
+Ternova va a JVM) sobre LiteLLM (que queda como anti-corruption layer a los modelos) + **Azure APIM
++ Key Vault + App Insights**; IaC en Terraform. Cierra el Waiver. Confirmar con Gerson/Rojas/Pedro/Carlos.
