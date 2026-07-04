@@ -81,8 +81,15 @@ existente, que es el cerebro del agente corporativo):
 
 | Servicio (systemd) | Puerto | Qué hace |
 |---|---|---|
-| `vllm-lan-proxy.service` | `:8003` | Expone el vLLM local (`127.0.0.1:8000`) en LAN/tailnet vía socat. Usa **el modelo que esté de turno** (`GET /v1/models`). |
-| `whisper-asr.service` | `:8004` | whisper.cpp (build CUDA nativo) sirviendo **large-v3** con endpoint OpenAI-compatible `/v1/audio/transcriptions`. |
+| `vllm-lan-proxy.service` | `:8003` | Expone el vLLM local en el **tailnet** (bind a la IP de Tailscale, `max-children=2` para no agotar los 4 slots de `--max-num-seqs` que comparte con el agente N1). Usa **el modelo de turno** (`GET /v1/models`). |
+| `parakeet-lan-proxy.service` | `:8005` | **ASR default de la app**: expone el Parakeet existente (`127.0.0.1:8002`, multilingüe, sin costo GPU en reposo) en el tailnet, `max-children=4`. |
+| `whisper-asr.service` | `:8004` | whisper.cpp (build CUDA nativo) sirviendo **large-v3** — modo "alta precisión" opt-in (mantiene ~3.7 GB de GPU residentes; `MemoryMax=16G`). Bind a la IP de Tailscale. |
+
+> Endurecido tras revisión del estado real de la Spark: binds SOLO al tailnet (no
+> `0.0.0.0`; UFW está inactivo en el host), límites de concurrencia en los proxies,
+> y rollout por fases (piloto antes de toda la org). El vLLM corre con
+> `--max-num-seqs 4` y sin scheduling por prioridad: la protección del agente es el
+> `max-children` del proxy.
 
 Ambos con `Restart=always` + `enable` → sobreviven reboot. Fuente: `~/whisper.cpp`
 (modelo en `models/ggml-large-v3.bin`). Rendimiento medido: ~1.4 s por clip corto
@@ -92,7 +99,7 @@ Ambos con `Restart=always` + `enable` → sobreviven reboot. Fuente: `~/whisper.
 con un clic, sin descargar modelos):
 
 ```bash
-TERNOVA_DGX_TRANSCRIBE_ENDPOINT=http://<dgx-host>:8004/v1 \
+TERNOVA_DGX_TRANSCRIBE_ENDPOINT=http://<dgx-host>:8005/v1  # parakeet default; :8004 = whisper large-v3 opt-in \
 TERNOVA_DGX_SUMMARY_ENDPOINT=http://<dgx-host>:8003/v1 \
 NEXT_PUBLIC_TERNOVA_DGX_SUMMARY_ENDPOINT=http://<dgx-host>:8003/v1 \
 NEXT_PUBLIC_TERNOVA_DGX_SUMMARY_MODEL=qwen3.6-35b \
