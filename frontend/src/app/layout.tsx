@@ -11,6 +11,7 @@ import "sonner/dist/styles.css"
 import { useState, useEffect, useCallback, Suspense } from 'react'
 import { ChatDock } from '@/components/Chat/ChatDock'
 import { ChatUIProvider } from '@/contexts/ChatUIContext'
+import { ChatSessionProvider } from '@/contexts/ChatSessionProvider'
 import { applyThemeMode, getThemeMode, THEME_CHANGE_EVENT } from '@/lib/theme'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
@@ -322,14 +323,19 @@ export default function RootLayout({
                                 <OnboardingFlow onComplete={handleOnboardingComplete} />
                               ) : (
                                 <ChatUIProvider>
-                                  <div className="flex">
-                                    <Sidebar />
-                                    <MainContent>{children}</MainContent>
-                                    {/* Nova: chat acoplado (ocupa espacio, no tapa) */}
-                                    <Suspense fallback={null}>
-                                      <ChatDock />
-                                    </Suspense>
-                                  </div>
+                                  {/* Nova: la conversación de chat es una sola, global y
+                                      persistente (no se reinicia al navegar). Vive por
+                                      ENCIMA del router/flex. */}
+                                  <ChatSessionProvider>
+                                    <div className="flex">
+                                      <Sidebar />
+                                      <MainContent>{children}</MainContent>
+                                      {/* Nova: chat acoplado (ocupa espacio, no tapa) */}
+                                      <Suspense fallback={null}>
+                                        <ChatDock />
+                                      </Suspense>
+                                    </div>
+                                  </ChatSessionProvider>
                                 </ChatUIProvider>
                               )}
                               {/* Import audio overlay and dialog */}

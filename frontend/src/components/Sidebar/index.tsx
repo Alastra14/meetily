@@ -35,9 +35,7 @@ import { toast } from 'sonner';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { useImportDialog } from '@/contexts/ImportDialogContext';
 import { useConfig } from '@/contexts/ConfigContext';
-import { useChatUI } from '@/contexts/ChatUIContext';
 import { useResizable } from '@/hooks/useResizable';
-import { OPEN_CHAT_HISTORY_EVENT } from '@/components/Chat';
 
 import {
   Dialog,
@@ -85,7 +83,6 @@ const Sidebar: React.FC = () => {
   const { isRecording } = useRecordingState();
   const { openImportDialog } = useImportDialog();
   const { betaFeatures } = useConfig();
-  const { setChatOpen } = useChatUI();
   // Ancho arrastrable del sidebar expandido: el handle vive en el borde
   // derecho del panel (anclado a la izquierda de la ventana), así que
   // arrastrar hacia la derecha agranda. Solo aplica cuando NO está colapsado;
@@ -470,15 +467,6 @@ const Sidebar: React.FC = () => {
     setExpandedFolders(newExpanded);
   };
 
-  // Abre el ChatPanel directamente en la vista de "Chats guardados".
-  // Usa useChatUI para abrir el panel y un evento window para indicarle a
-  // ChatPanel que arranque en el historial (ChatUIContext no expone ese detalle).
-  const handleOpenChatHistory = () => {
-    setChatOpen(true);
-    window.dispatchEvent(new CustomEvent(OPEN_CHAT_HISTORY_EVENT));
-    Analytics.trackButtonClick('open_chat_history', 'sidebar');
-  };
-
   // Expose setShowModelSettings to window for Rust tray to call
   useEffect(() => {
     (window as any).openSettings = () => {
@@ -574,8 +562,10 @@ const Sidebar: React.FC = () => {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={handleOpenChatHistory}
-                className="p-2 rounded-lg transition-colors duration-150 hover:bg-gray-100"
+                onClick={() => router.push('/chats')}
+                className={`p-2 rounded-lg transition-colors duration-150 ${
+                  pathname === '/chats' ? 'bg-gray-100' : 'hover:bg-gray-100'
+                }`}
               >
                 <ChatsCircle weight="duotone" className="w-5 h-5 text-gray-600" />
               </button>
@@ -802,13 +792,26 @@ const Sidebar: React.FC = () => {
           {/* Fixed navigation items */}
           <div className="flex-shrink-0">
             {!isCollapsed && (
-              <div
-                onClick={() => router.push('/')}
-                className="p-3  text-lg font-semibold items-center hover:bg-gray-100 h-10   flex mx-3 mt-3 rounded-lg cursor-pointer"
-              >
-                <House weight="duotone" className="w-4 h-4 mr-2" />
-                <span>Home</span>
-              </div>
+              <>
+                <div
+                  onClick={() => router.push('/')}
+                  className={`p-3 text-lg font-semibold items-center h-10 flex mx-3 mt-3 rounded-lg cursor-pointer ${
+                    pathname === '/' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  }`}
+                >
+                  <House weight="duotone" className="w-4 h-4 mr-2" />
+                  <span>Home</span>
+                </div>
+                <div
+                  onClick={() => router.push('/chats')}
+                  className={`p-3 text-lg font-semibold items-center h-10 flex mx-3 mt-1 rounded-lg cursor-pointer ${
+                    pathname === '/chats' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  }`}
+                >
+                  <ChatsCircle weight="duotone" className="w-4 h-4 mr-2" />
+                  <span>Chats</span>
+                </div>
+              </>
             )}
           </div>
 
@@ -915,14 +918,6 @@ const Sidebar: React.FC = () => {
             )}
 
             <div className="flex items-center gap-1.5 mt-1 mb-1">
-              <button
-                onClick={handleOpenChatHistory}
-                title="Chats guardados"
-                className="flex-1 flex items-center justify-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors shadow-sm"
-              >
-                <ChatsCircle weight="duotone" className="w-4 h-4 mr-2" />
-                <span>Chats</span>
-              </button>
               <button
                 onClick={() => router.push('/settings')}
                 title="Settings"
