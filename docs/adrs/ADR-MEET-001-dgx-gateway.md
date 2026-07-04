@@ -1,9 +1,21 @@
 # ADR-MEET-001 — Acceso org-wide a los modelos de la DGX Spark para Ternova Meet
 
-- **Estado:** Propuesto (pendiente de revisión del Architecture Board y visto bueno del oficial de seguridad).
+- **Estado:** **Aprobado como PROTOTIPO** por A. Lastra (TI/Arquitectura) el 2026-07-04.
+  Producción org-wide sigue pendiente de: firma del **oficial de seguridad** (checklist) + **Waiver** del Architecture Board.
 - **Fecha:** 2026-07-04
 - **Dominio:** Ternova Meet (asistente de reuniones) · **Autor:** A. Lastra
 - **Marco:** PT-ARQ-004 (arquitectura) + POL-TIC-001 (seguridad) + PT-IA-003 (IA).
+
+## Excepción de prototipo (EXC-U-2026 — Urgencia/POC)
+- **Alcance:** piloto controlado en la red interna (VPN/Tailscale), gateway **autenticado**,
+  usuarios limitados (arranca con 1: el jefe), **sin datos confidenciales de producción** hasta la
+  firma del CISO. Es un prototipo dentro del protocolo, aprobado por el responsable del proceso (TI).
+- **Expiración:** 30 días (regla de Waiver tipo Urgencia) o hasta el visto bueno formal del oficial
+  de seguridad, lo que ocurra primero. Al vencer: cerrar o migrar a la ruta conforme completa.
+- **Mitigaciones activas durante el prototipo:** modelos crudos fuera de la red (solo gateway),
+  auth por API key + rate-limit + log, acceso solo por VPN/Tailscale, secreto fuera del repo.
+- **Pendiente para producción (no cubierto por esta aprobación de prototipo):** OAuth2/JWT con Entra,
+  TLS con CA interna, Key Vault, DNS interno, inventario de activos, Waiver del Board, firma del CISO.
 
 ## Contexto
 Ternova Meet (app de escritorio) necesita transcripción y resumen/chat servidos por la **DGX
