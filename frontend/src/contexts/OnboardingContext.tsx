@@ -504,7 +504,7 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }
   };
 
-  // Ternova Meet — completa el onboarding SIN descargar/forzar modelos locales.
+  // Nova — completa el onboarding SIN descargar/forzar modelos locales.
   // Se usa cuando el usuario elige el "Servidor Ternova (DGX)" (transcripción y
   // resumen remotos) o cuando decide omitir la descarga desde DownloadProgressStep.
   // A diferencia de completeOnboarding(), NO invoca el comando Rust

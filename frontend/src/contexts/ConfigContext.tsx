@@ -97,7 +97,7 @@ const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
 
 export function ConfigProvider({ children }: { children: ReactNode }) {
-  // Ternova Meet — default frictionless: build corporativo puede venir apuntando el
+  // Nova — default frictionless: build corporativo puede venir apuntando el
   // resumen a la DGX (vLLM OpenAI-compatible) vía NEXT_PUBLIC_TERNOVA_DGX_SUMMARY_ENDPOINT.
   // Si no está, arranca en 'ollama' (sin regresión). El usuario/ config guardada override.
   const dgxSummaryEndpoint = process.env.NEXT_PUBLIC_TERNOVA_DGX_SUMMARY_ENDPOINT;
@@ -219,7 +219,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
             provider: config.provider || 'parakeet',
             model: config.model || 'parakeet-tdt-0.6b-v3-int8',
             apiKey: config.apiKey || null,
-            // Ternova Meet — endpoint del ASR remoto (DGX), si provider === 'remote'
+            // Nova — endpoint del ASR remoto (DGX), si provider === 'remote'
             endpoint: (config as any).remoteEndpoint ?? null
           });
         }

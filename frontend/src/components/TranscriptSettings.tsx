@@ -14,7 +14,7 @@ export interface TranscriptModelProps {
     provider: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai' | 'remote';
     model: string;
     apiKey?: string | null;
-    // Ternova Meet — endpoint del ASR remoto (DGX) cuando provider === 'remote'
+    // Nova — endpoint del ASR remoto (DGX) cuando provider === 'remote'
     endpoint?: string | null;
 }
 
@@ -30,7 +30,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     const [isApiKeyLocked, setIsApiKeyLocked] = useState<boolean>(true);
     const [isLockButtonVibrating, setIsLockButtonVibrating] = useState<boolean>(false);
     const [uiProvider, setUiProvider] = useState<TranscriptModelProps['provider']>(transcriptModelConfig.provider);
-    // Ternova Meet — estado para transcripción remota (DGX)
+    // Nova — estado para transcripción remota (DGX)
     const [remoteEndpoint, setRemoteEndpoint] = useState<string>(transcriptModelConfig.endpoint || '');
     const [remoteModel, setRemoteModel] = useState<string>(
         transcriptModelConfig.provider === 'remote' && transcriptModelConfig.model
@@ -235,7 +235,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                         </div>
                     )}
 
-                    {/* Ternova Meet — transcripción remota (DGX / servidor central) */}
+                    {/* Nova — transcripción remota (DGX / servidor central) */}
                     {uiProvider === 'remote' && (
                         <div className="mt-4 space-y-3 mx-1">
                             <p className="text-xs text-gray-500">

@@ -1,6 +1,6 @@
 'use client';
 
-// Ternova Meet — estado de apertura del panel de chat, compartido entre el
+// Nova — estado de apertura del panel de chat, compartido entre el
 // panel acoplado (ChatDock, en el layout) y los botones que lo abren
 // (RecordingControls en Home, header de meeting-details, etc.).
 

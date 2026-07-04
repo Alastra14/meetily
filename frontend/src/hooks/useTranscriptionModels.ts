@@ -87,7 +87,7 @@ export function useTranscriptionModels(transcriptModelConfig: TranscriptModelCon
       console.error('Failed to fetch Parakeet models:', err);
     }
 
-    // Ternova Meet: siempre agregar la opción de transcripción remota (DGX) al final
+    // Nova: siempre agregar la opción de transcripción remota (DGX) al final
     let remoteModelName = DEFAULT_REMOTE_MODEL;
     let isRemoteConfigured = false;
     try {

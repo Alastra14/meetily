@@ -1,6 +1,6 @@
 'use client';
 
-// Ternova Meet — conmutador de tema claro / oscuro / sistema.
+// Nova — conmutador de tema claro / oscuro / sistema.
 // Cicla entre los tres modos; persiste en localStorage (lib/theme).
 
 import React, { useEffect, useState } from 'react';

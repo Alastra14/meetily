@@ -1,4 +1,4 @@
-// Ternova Meet — gestión de tema (claro / oscuro / sistema).
+// Nova — gestión de tema (claro / oscuro / sistema).
 // Persistido en localStorage; aplica la clase `dark` en <html> (tailwind
 // darkMode: ['class']). Emite 'tn-theme-change' para que la UI reaccione.
 

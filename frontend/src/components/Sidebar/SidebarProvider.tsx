@@ -18,7 +18,7 @@ interface SidebarItem {
 export interface CurrentMeeting {
   id: string;
   title: string;
-  /** Origen: 'teams' | 'import' | 'live' | null (nativa). Ternova Meet. */
+  /** Origen: 'teams' | 'import' | 'live' | null (nativa). Nova. */
   source?: string | null;
 }
 

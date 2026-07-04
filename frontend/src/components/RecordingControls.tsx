@@ -655,7 +655,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
             </>
           )}
 
-          {/* Ternova Meet: chat con las reuniones, junto a los indicadores */}
+          {/* Nova: chat con las reuniones, junto a los indicadores */}
           <div className="w-px h-6 bg-gray-200 mx-1" />
           <Tooltip>
             <TooltipTrigger asChild>

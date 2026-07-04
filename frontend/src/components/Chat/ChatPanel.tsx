@@ -4,10 +4,23 @@ import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowLeft, ChatTeardropText, GearSix, PaperPlaneRight, X } from '@phosphor-icons/react';
+import {
+  ArrowLeft,
+  ChatTeardropText,
+  ClockCounterClockwise,
+  GearSix,
+  PaperPlaneRight,
+  Plus,
+  X,
+} from '@phosphor-icons/react';
 import { Loader2 } from 'lucide-react';
 import { useMeetingChat } from '@/hooks/useMeetingChat';
+import { useResizable } from '@/hooks/useResizable';
 import { ChatSettings } from './ChatSettings';
+import { ChatHistoryList } from './ChatHistoryList';
+
+/** Evento global para abrir el panel de chat directamente en la vista de historial. */
+export const OPEN_CHAT_HISTORY_EVENT = 'tn-open-chat-history';
 
 export interface ChatPanelProps {
   open: boolean;
@@ -39,12 +52,26 @@ export function ChatPanel({
     setTarget,
     sendMessage,
     hasCurrentContext,
+    sessionId,
+    loadSession,
+    startNewChat,
   } = useMeetingChat({ meetingId, liveTranscript });
 
   const [input, setInput] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Ancho arrastrable: el handle vive en el borde izquierdo del panel (anclado
+  // a la derecha de la ventana), así que arrastrar hacia la izquierda agranda.
+  const { width: panelWidth, isResizing, handleProps: resizeHandleProps } = useResizable({
+    side: 'left',
+    min: 320,
+    max: 720,
+    defaultWidth: 380,
+    storageKey: 'tn-chat-width',
+  });
 
   const targetLabel = target === 'ternova' ? 'Servidor Ternova' : 'Local';
 
@@ -53,6 +80,29 @@ export function ChatPanel({
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, open, loading]);
+
+  // Permite que otras partes de la UI (p.ej. el botón "Chats" del Sidebar)
+  // abran este panel directamente en la vista de historial, sin depender
+  // de ChatUIContext (que no expone ese detalle).
+  useEffect(() => {
+    const handleOpenHistory = () => {
+      setShowSettings(false);
+      setShowHistory(true);
+      onOpenChange(true);
+    };
+    window.addEventListener(OPEN_CHAT_HISTORY_EVENT, handleOpenHistory);
+    return () => window.removeEventListener(OPEN_CHAT_HISTORY_EVENT, handleOpenHistory);
+  }, [onOpenChange]);
+
+  const handleSelectSession = (id: string) => {
+    loadSession(id);
+    setShowHistory(false);
+  };
+
+  const handleStartNewChat = () => {
+    startNewChat();
+    setShowHistory(false);
+  };
 
   const handleSend = async () => {
     const question = input.trim();
@@ -68,29 +118,53 @@ export function ChatPanel({
     }
   };
 
-  const headerTitle =
-    scope === 'current' && meetingTitle ? meetingTitle : 'Chat con tus reuniones';
+  const headerTitle = showHistory
+    ? 'Chats guardados'
+    : scope === 'current' && meetingTitle
+      ? meetingTitle
+      : 'Chat con tus reuniones';
+
+  const showBackButton = showSettings || showHistory;
+  const handleBack = () => {
+    setShowSettings(false);
+    setShowHistory(false);
+  };
+
+  const asideWidth = open ? panelWidth : 0;
 
   return (
     // Acoplado al layout: ocupa espacio real en la ventana (empuja el contenido,
-    // no tapa el resumen). La animación es de ancho, no de translate.
+    // no tapa el resumen). La animación es de ancho, no de translate. Se
+    // desactiva la transición mientras se arrastra el handle (isResizing) para
+    // que el ancho siga al puntero sin lag/rebote.
     <aside
-      className={`h-screen shrink-0 z-30 flex flex-col overflow-hidden
+      className={`h-screen shrink-0 z-30 flex flex-col overflow-hidden relative
         bg-white dark:bg-card border-l border-gray-200 dark:border-border
-        transition-[width] duration-300 ease-in-out
-        ${open ? 'w-[380px]' : 'w-0 border-l-0'}`}
+        ${isResizing ? '' : 'transition-[width] duration-300 ease-in-out'}
+        ${open ? '' : 'border-l-0'}`}
+      style={{ width: asideWidth }}
       role="complementary"
       aria-label="Chat con tus reuniones"
       aria-hidden={!open}
     >
-      <div className="w-[380px] h-full flex flex-col">
+      {open && (
+        <div
+          {...resizeHandleProps}
+          aria-label="Redimensionar panel de chat"
+          className={`absolute top-0 left-0 h-full w-1.5 cursor-col-resize z-40
+            touch-none select-none
+            hover:bg-blue-500/40 dark:hover:bg-blue-400/40
+            ${isResizing ? 'bg-blue-500/50 dark:bg-blue-400/50' : 'bg-transparent'}`}
+        />
+      )}
+      <div className="h-full flex flex-col" style={{ width: panelWidth }}>
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-200 dark:border-border">
         <div className="flex items-center gap-2 min-w-0">
-          {showSettings ? (
+          {showBackButton ? (
             <button
               type="button"
-              onClick={() => setShowSettings(false)}
+              onClick={handleBack}
               aria-label="Volver al chat"
               className="shrink-0 rounded-md p-1 -ml-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-secondary dark:text-muted-foreground"
             >
@@ -100,11 +174,33 @@ export function ChatPanel({
             <ChatTeardropText size={22} weight="duotone" className="text-blue-600 shrink-0" />
           )}
           <h2 className="text-sm font-semibold text-gray-900 dark:text-foreground truncate">
-            {showSettings ? 'Ajustes del chat' : headerTitle}
+            {headerTitle}
           </h2>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {!showSettings && (
+          {!showSettings && !showHistory && (
+            <button
+              type="button"
+              onClick={handleStartNewChat}
+              aria-label="Nuevo chat"
+              title="Nuevo chat"
+              className="rounded-md p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-secondary dark:text-muted-foreground"
+            >
+              <Plus size={18} weight="duotone" />
+            </button>
+          )}
+          {!showSettings && !showHistory && (
+            <button
+              type="button"
+              onClick={() => setShowHistory(true)}
+              aria-label="Ver chats guardados"
+              title="Chats guardados"
+              className="rounded-md p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 dark:hover:bg-secondary dark:text-muted-foreground"
+            >
+              <ClockCounterClockwise size={18} weight="duotone" />
+            </button>
+          )}
+          {!showSettings && !showHistory && (
             <button
               type="button"
               onClick={() => setShowSettings(true)}
@@ -125,8 +221,16 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* Body: mensajes o ajustes */}
-      {showSettings ? (
+      {/* Body: mensajes, ajustes o historial de chats */}
+      {showHistory ? (
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <ChatHistoryList
+            activeSessionId={sessionId}
+            onSelectSession={handleSelectSession}
+            onStartNewChat={handleStartNewChat}
+          />
+        </div>
+      ) : showSettings ? (
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <ChatSettings target={target} onTargetChange={setTarget} />
         </div>
@@ -195,7 +299,7 @@ export function ChatPanel({
       )}
 
       {/* Footer */}
-      {!showSettings && (
+      {!showSettings && !showHistory && (
       <div className="border-t border-gray-200 dark:border-border px-4 py-3 space-y-2.5">
         {/* Alcance */}
         <div className="flex items-center gap-2" role="group" aria-label="Alcance del chat">

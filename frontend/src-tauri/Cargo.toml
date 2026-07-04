@@ -1,7 +1,7 @@
 [package]
 name = "meetily"
 version = "0.4.0"
-description = "Ternova Meet — asistente de reuniones de Ternova (basado en Meetily, MIT)"
+description = "Nova — asistente de reuniones de Ternova (basado en Meetily, MIT)"
 authors = ["Ternova Group", "Sujith S (Meetily upstream)"]
 license = "MIT"
 repository = "https://github.com/Alastra14/meetily"

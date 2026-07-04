@@ -28,9 +28,10 @@ import { RecordingPostProcessingProvider } from '@/contexts/RecordingPostProcess
 import { ImportAudioDialog, ImportDropOverlay } from '@/components/ImportAudio'
 import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
+import { WelcomeIntro } from '@/components/WelcomeIntro'
 
 
-// Ternova Meet — tipografías de marca, cargadas en local para funcionar 100%
+// Nova — tipografías de marca, cargadas en local para funcionar 100%
 // offline (sin Google Fonts). Spec: Gosha Sans = títulos (display),
 // Space Grotesk = subtítulos, Montserrat = cuerpo/UI.
 const montserrat = localFont({
@@ -58,7 +59,7 @@ const goshaSans = localFont({
   display: 'swap',
 })
 
-// Ternova Meet — aplica el tema elegido (claro/oscuro/sistema, ver lib/theme)
+// Nova — aplica el tema elegido (claro/oscuro/sistema, ver lib/theme)
 // togglendo la clase `dark` en <html>. Reacciona al cambio del sistema y al
 // toggle de la UI (evento tn-theme-change).
 function SystemThemeWatcher() {
@@ -274,6 +275,23 @@ export default function RootLayout({
     window.location.reload()
   }
 
+  // Nova — la intro de bienvenida (WelcomeIntro) llama a esto cuando el
+  // usuario elige "Descargar modelos locales". Reutilizamos el mismo mecanismo
+  // de onboarding que ya existe (setShowOnboarding), en vez de duplicar el flujo
+  // de descarga: esto monta <OnboardingFlow> empezando en WelcomeStep (paso 1),
+  // que avanza hasta DownloadProgressStep.
+  const handleRequestLocalDownload = () => {
+    console.log('[Layout] WelcomeIntro solicitó descarga de modelos locales, mostrando onboarding')
+    setShowOnboarding(true)
+  }
+
+  // No-op intencional: al "Entrar a la app", WelcomeIntro simplemente se oculta
+  // a sí mismo (su propio estado showIntro) y deja ver lo que showOnboarding ya
+  // decida mostrar debajo (OnboardingFlow o la app principal).
+  const handleEnterApp = () => {
+    console.log('[Layout] Usuario entró a la app desde WelcomeIntro')
+  }
+
   return (
     <html lang="en">
       <body className={`${montserrat.variable} ${spaceGrotesk.variable} ${goshaSans.variable} font-sans antialiased`}>
@@ -292,6 +310,13 @@ export default function RootLayout({
                               <DownloadProgressToastProvider />
 
                               <SystemThemeWatcher />
+                              {/* Nova: pantalla de bienvenida en CADA arranque (no solo
+                                  la primera vez). Se muestra encima de lo que sea que showOnboarding
+                                  decida renderizar debajo (onboarding o app principal). */}
+                              <WelcomeIntro
+                                onRequestLocalDownload={handleRequestLocalDownload}
+                                onEnterApp={handleEnterApp}
+                              />
                               {/* Show onboarding or main app */}
                               {showOnboarding ? (
                                 <OnboardingFlow onComplete={handleOnboardingComplete} />
@@ -300,7 +325,7 @@ export default function RootLayout({
                                   <div className="flex">
                                     <Sidebar />
                                     <MainContent>{children}</MainContent>
-                                    {/* Ternova Meet: chat acoplado (ocupa espacio, no tapa) */}
+                                    {/* Nova: chat acoplado (ocupa espacio, no tapa) */}
                                     <Suspense fallback={null}>
                                       <ChatDock />
                                     </Suspense>

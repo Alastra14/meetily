@@ -9,6 +9,7 @@ import {
   CaretCircleLeft,
   CaretCircleRight,
   Calendar,
+  ChatsCircle,
   House,
   Trash,
   Microphone,
@@ -34,6 +35,9 @@ import { toast } from 'sonner';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { useImportDialog } from '@/contexts/ImportDialogContext';
 import { useConfig } from '@/contexts/ConfigContext';
+import { useChatUI } from '@/contexts/ChatUIContext';
+import { useResizable } from '@/hooks/useResizable';
+import { OPEN_CHAT_HISTORY_EVENT } from '@/components/Chat';
 
 import {
   Dialog,
@@ -81,8 +85,20 @@ const Sidebar: React.FC = () => {
   const { isRecording } = useRecordingState();
   const { openImportDialog } = useImportDialog();
   const { betaFeatures } = useConfig();
+  const { setChatOpen } = useChatUI();
+  // Ancho arrastrable del sidebar expandido: el handle vive en el borde
+  // derecho del panel (anclado a la izquierda de la ventana), así que
+  // arrastrar hacia la derecha agranda. Solo aplica cuando NO está colapsado;
+  // el modo colapsado sigue con su ancho fijo (w-16).
+  const { width: sidebarWidth, isResizing: isSidebarResizing, handleProps: sidebarResizeHandleProps } = useResizable({
+    side: 'right',
+    min: 200,
+    max: 420,
+    defaultWidth: 256, // equivalente a w-64 (16rem = 256px), el ancho actual
+    storageKey: 'tn-sidebar-width',
+  });
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['meetings']));
-  // Ternova Meet: filtro por origen de la reunión
+  // Nova: filtro por origen de la reunión
   const [sourceFilter, setSourceFilter] = useState<'all' | 'teams' | 'recorded'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showModelSettings, setShowModelSettings] = useState(false);
@@ -454,6 +470,15 @@ const Sidebar: React.FC = () => {
     setExpandedFolders(newExpanded);
   };
 
+  // Abre el ChatPanel directamente en la vista de "Chats guardados".
+  // Usa useChatUI para abrir el panel y un evento window para indicarle a
+  // ChatPanel que arranque en el historial (ChatUIContext no expone ese detalle).
+  const handleOpenChatHistory = () => {
+    setChatOpen(true);
+    window.dispatchEvent(new CustomEvent(OPEN_CHAT_HISTORY_EVENT));
+    Analytics.trackButtonClick('open_chat_history', 'sidebar');
+  };
+
   // Expose setShowModelSettings to window for Rust tray to call
   useEffect(() => {
     (window as any).openSettings = () => {
@@ -543,6 +568,20 @@ const Sidebar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent side="right">
               <p>Meeting Notes</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleOpenChatHistory}
+                className="p-2 rounded-lg transition-colors duration-150 hover:bg-gray-100"
+              >
+                <ChatsCircle weight="duotone" className="w-5 h-5 text-gray-600" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Chats</p>
             </TooltipContent>
           </Tooltip>
 
@@ -690,10 +729,10 @@ const Sidebar: React.FC = () => {
 
   return (
     <div className="fixed top-0 left-0 h-screen z-40">
-      {/* Floating collapse button */}
+      {/* Floating collapse button (z-[60]: por encima del handle de resize, que usa z-50) */}
       <button
         onClick={toggleCollapse}
-        className="absolute -right-6 top-20 z-50 p-1 bg-white hover:bg-gray-100 rounded-full shadow-lg border"
+        className="absolute -right-6 top-20 z-[60] p-1 bg-white hover:bg-gray-100 rounded-full shadow-lg border"
         style={{ transform: 'translateX(50%)' }}
       >
         {isCollapsed ? (
@@ -704,9 +743,21 @@ const Sidebar: React.FC = () => {
       </button>
 
       <div
-        className={`h-screen bg-white border-r shadow-sm flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'
-          }`}
+        className={`h-screen bg-white border-r shadow-sm flex flex-col relative
+          ${isCollapsed ? 'w-16' : 'w-auto'}
+          ${isSidebarResizing ? '' : 'transition-all duration-300'}`}
+        style={isCollapsed ? undefined : { width: sidebarWidth }}
       >
+        {!isCollapsed && (
+          <div
+            {...sidebarResizeHandleProps}
+            aria-label="Redimensionar barra lateral"
+            className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize z-50
+              touch-none select-none translate-x-1/2
+              hover:bg-blue-500/40 dark:hover:bg-blue-400/40
+              ${isSidebarResizing ? 'bg-blue-500/50 dark:bg-blue-400/50' : 'bg-transparent'}`}
+          />
+        )}
         {/*  Header with traffic light spacing */}
         <div className="flex-shrink-0 h-22 flex items-center">
 
@@ -783,7 +834,7 @@ const Sidebar: React.FC = () => {
               </div>
             )}
 
-            {/* Filtro por origen (Ternova Meet) */}
+            {/* Filtro por origen (Nova) */}
             {!isCollapsed && !searchQuery && (
               <div className="flex-shrink-0 flex items-center gap-1 px-4 pt-2 pb-1">
                 {([
@@ -863,13 +914,24 @@ const Sidebar: React.FC = () => {
               </button>
             )}
 
-            <button
-              onClick={() => router.push('/settings')}
-              className="w-full flex items-center justify-center px-3 py-1.5 mt-1 mb-1 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors shadow-sm"
-            >
-              <GearSix weight="duotone" className="w-4 h-4 mr-2" />
-              <span>Settings</span>
-            </button>
+            <div className="flex items-center gap-1.5 mt-1 mb-1">
+              <button
+                onClick={handleOpenChatHistory}
+                title="Chats guardados"
+                className="flex-1 flex items-center justify-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors shadow-sm"
+              >
+                <ChatsCircle weight="duotone" className="w-4 h-4 mr-2" />
+                <span>Chats</span>
+              </button>
+              <button
+                onClick={() => router.push('/settings')}
+                title="Settings"
+                className="flex-1 flex items-center justify-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors shadow-sm"
+              >
+                <GearSix weight="duotone" className="w-4 h-4 mr-2" />
+                <span>Settings</span>
+              </button>
+            </div>
             <Info isCollapsed={isCollapsed} />
             <ThemeToggle isCollapsed={isCollapsed} />
             <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-gray-400">

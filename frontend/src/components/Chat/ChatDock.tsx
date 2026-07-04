@@ -9,7 +9,7 @@ import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 
 /**
- * Ternova Meet — dock global del chat con las reuniones.
+ * Nova — dock global del chat con las reuniones.
  * Vive dentro del árbol de providers (layout) y resuelve el contexto activo:
  * - Grabación en vivo: usa el transcript que va llegando (TranscriptContext).
  * - Página de detalle: usa el meetingId de la URL (?id=...).

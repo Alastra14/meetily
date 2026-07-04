@@ -79,7 +79,7 @@ export function ImportAudioDialog({
   const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
-  // Ternova Meet: origen del import — archivo local o URL (Teams/Stream/SharePoint)
+  // Nova: origen del import — archivo local o URL (Teams/Stream/SharePoint)
   const [mode, setMode] = useState<'file' | 'url'>('file');
   const [url, setUrl] = useState('');
 
@@ -99,7 +99,7 @@ export function ImportAudioDialog({
     remoteConfigured,
   } = useTranscriptionModels(transcriptModelConfig);
 
-  // Ternova Meet: mini-formulario para configurar la transcripción remota (DGX) inline
+  // Nova: mini-formulario para configurar la transcripción remota (DGX) inline
   const [remoteEndpointInput, setRemoteEndpointInput] = useState('');
   const [remoteModelInput, setRemoteModelInput] = useState('whisper-large-v3');
   const [remoteApiKeyInput, setRemoteApiKeyInput] = useState('');
@@ -192,7 +192,7 @@ export function ImportAudioDialog({
   // El servidor remoto ya se encarga de decidir el idioma; no exponemos el selector local
   const needsRemoteSetup = isRemoteModel && !remoteConfigured && !remoteJustConfigured;
 
-  // Ternova Meet: detecta enlaces de Teams/SharePoint/Stream para mostrar un hint contextual
+  // Nova: detecta enlaces de Teams/SharePoint/Stream para mostrar un hint contextual
   const isTeamsOrSharePointUrl = useMemo(() => {
     const value = url.toLowerCase();
     return (
@@ -332,7 +332,7 @@ export function ImportAudioDialog({
           {/* File selection / info */}
           {!isProcessing && !error && (
             <>
-              {/* Conmutador Archivo | URL (Ternova Meet) */}
+              {/* Conmutador Archivo | URL (Nova) */}
               <div className="flex rounded-lg border border-gray-200 p-1 bg-gray-50">
                 <button
                   type="button"
@@ -518,7 +518,7 @@ export function ImportAudioDialog({
                         </div>
                       )}
 
-                      {/* Ternova Meet: mini-formulario de configuración del servidor remoto (DGX) */}
+                      {/* Nova: mini-formulario de configuración del servidor remoto (DGX) */}
                       {needsRemoteSetup && (
                         <div className="space-y-2 border rounded-lg p-3 bg-blue-50/40 border-blue-200">
                           <p className="text-xs text-gray-600">

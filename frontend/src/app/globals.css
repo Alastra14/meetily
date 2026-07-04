@@ -77,7 +77,7 @@
 }
 
 @layer base {
-  /* ===== Ternova Meet — paleta de marca (indigo + naranja) =====
+  /* ===== Nova — paleta de marca (indigo + naranja) =====
      Derivada de Ternova Design System 2 (colors_and_type.css).
      shadcn usa HSL "H S% L%". --primary = indigo de marca; --ring = naranja
      (focus); --accent = superficie de hover cálida y sutil. */
@@ -151,7 +151,7 @@
     height: 100%;
   }
 
-  /* Ternova Meet — jerarquía tipográfica de marca:
+  /* Nova — jerarquía tipográfica de marca:
      Gosha Sans (display) para títulos, Space Grotesk para subtítulos,
      Montserrat (via .font-sans en body) para el cuerpo.
      Las var() llevan fallback para no invalidar la declaración si faltan. */
@@ -230,7 +230,7 @@
   }
 }
 
-/* ===== Ternova Meet — modo oscuro como capa de tema =====
+/* ===== Nova — modo oscuro como capa de tema =====
    Los componentes del upstream usan utilidades claras hardcodeadas (bg-white,
    gray-*). En vez de editar ~40 componentes (imposible de mergear), se
    sobreescriben aquí las utilidades más usadas bajo .dark. Cobertura por patrón,

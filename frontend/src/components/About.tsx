@@ -54,7 +54,7 @@ export function About() {
                 <div className="mb-3">
                     <Image
                         src="icon_128x128.png"
-                        alt="Ternova Meet Logo"
+                        alt="Nova Logo"
                         width={64}
                         height={64}
                         className="mx-auto"
@@ -95,7 +95,7 @@ export function About() {
 
             {/* Features Grid - Compact */}
             <div className="space-y-3">
-                <h2 className="text-base font-semibold text-gray-800">What makes Ternova Meet different</h2>
+                <h2 className="text-base font-semibold text-gray-800">What makes Nova different</h2>
                 <div className="grid grid-cols-2 gap-2">
                     <div className="bg-gray-50 rounded p-3 hover:bg-gray-100 transition-colors">
                         <h3 className="font-bold text-sm text-gray-900 mb-1">Privacy-first</h3>
@@ -133,14 +133,17 @@ export function About() {
                     onClick={handleContactClick}
                     className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors duration-200 shadow-sm hover:shadow-md"
                 >
-                    Ver el proyecto Ternova Meet
+                    Ver el proyecto Nova
                 </button>
             </div>
 
             {/* Footer - Compact */}
             <div className="pt-2 border-t border-gray-200 text-center">
-                <p className="text-xs text-gray-400">
-                    Ternova Meet — versión interna de Ternova basada en Meetily,
+                <p className="text-xs text-gray-500">
+                    Desarrollado por <span className="font-semibold">Andrés Lastra</span> — fork Nova
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                    Nova — versión interna de Ternova basada en Meetily,
                     creado por Zackriya Solutions (licencia MIT)
                 </p>
             </div>

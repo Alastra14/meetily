@@ -1,8 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
+import {
+  deriveTitle,
+  getSession,
+  newSession,
+  saveSession,
+  type ChatSession,
+} from '@/lib/chat-history';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -52,6 +59,11 @@ export function useMeetingChat({ meetingId = null, liveTranscript = null }: UseM
   const [target, setTargetState] = useState<ChatTarget>('local');
   const [usedMeetings, setUsedMeetings] = useState<ChatScopeMeeting[]>([]);
   const [providerLabel, setProviderLabel] = useState<string | null>(null);
+  // Id de la sesión persistida en curso (null hasta el primer mensaje).
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  // Evita persistir de nuevo justo después de un loadSession/startNewChat
+  // (que ya escriben o no necesitan escribir su propio estado inicial).
+  const skipNextPersistRef = useRef(false);
 
   // Cargar el target persistido una vez montado (evita mismatches de SSR/hydration).
   useEffect(() => {
@@ -81,6 +93,62 @@ export function useMeetingChat({ meetingId = null, liveTranscript = null }: UseM
     setUsedMeetings([]);
     setProviderLabel(null);
   }, []);
+
+  // Persiste la sesión actual cada vez que cambian los mensajes: crea una
+  // sesión nueva al primer intercambio y la actualiza en los siguientes.
+  // Se salta la persistencia justo después de loadSession/startNewChat para
+  // no reescribir con datos que ya vienen de localStorage (o un chat vacío).
+  useEffect(() => {
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
+    if (messages.length === 0) return;
+
+    const existing = sessionId ? getSession(sessionId) : null;
+    const base: ChatSession =
+      existing ?? newSession({ meetingId, scope, target });
+
+    const next: ChatSession = {
+      ...base,
+      meetingId: base.meetingId ?? meetingId ?? null,
+      scope,
+      target,
+      messages,
+      title: existing?.title && existing.title !== 'Nuevo chat' ? existing.title : deriveTitle(messages),
+    };
+
+    saveSession(next);
+    if (!sessionId) setSessionId(next.id);
+  }, [messages, scope, target, meetingId, sessionId]);
+
+  /** Carga una sesión guardada: reemplaza messages, scope y target actuales. */
+  const loadSession = useCallback((id: string) => {
+    const session = getSession(id);
+    if (!session) {
+      toast.error('No se encontró ese chat guardado');
+      return;
+    }
+    skipNextPersistRef.current = true;
+    setSessionId(session.id);
+    setMessages(session.messages);
+    setScope(session.scope);
+    setTargetState(session.target);
+    setError(null);
+    setUsedMeetings([]);
+    setProviderLabel(null);
+  }, []);
+
+  /** Empieza un chat en blanco, desligado de cualquier sesión guardada previa. */
+  const startNewChat = useCallback(() => {
+    skipNextPersistRef.current = true;
+    setSessionId(null);
+    setMessages([]);
+    setError(null);
+    setUsedMeetings([]);
+    setProviderLabel(null);
+    setScope(hasCurrentContext ? 'current' : 'all');
+  }, [hasCurrentContext]);
 
   const sendMessage = useCallback(
     async (question: string) => {
@@ -132,5 +200,8 @@ export function useMeetingChat({ meetingId = null, liveTranscript = null }: UseM
     hasCurrentContext,
     usedMeetings,
     providerLabel,
+    sessionId,
+    loadSession,
+    startNewChat,
   };
 }
