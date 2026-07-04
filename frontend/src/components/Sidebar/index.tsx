@@ -10,6 +10,7 @@ import {
   CaretCircleRight,
   Calendar,
   ChatsCircle,
+  ChatCircleDots,
   House,
   Trash,
   Microphone,
@@ -22,6 +23,8 @@ import {
   UploadSimple,
 } from '@phosphor-icons/react';
 import { useRouter, usePathname } from 'next/navigation';
+import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
 import { ConfirmationModal } from '../ConfirmationModel/confirmation-modal';
@@ -36,6 +39,8 @@ import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { useImportDialog } from '@/contexts/ImportDialogContext';
 import { useConfig } from '@/contexts/ConfigContext';
 import { useResizable } from '@/hooks/useResizable';
+import { useChatSession } from '@/contexts/ChatSessionProvider';
+import { listSessions, deleteSession, type ChatSession } from '@/lib/chat-history';
 
 import {
   Dialog,
@@ -83,6 +88,52 @@ const Sidebar: React.FC = () => {
   const { isRecording } = useRecordingState();
   const { openImportDialog } = useImportDialog();
   const { betaFeatures } = useConfig();
+  // Carpeta "Chats" (Nova): sesiones de chat guardadas (src/lib/chat-history.ts),
+  // espejo del mismo estado global expuesto por ChatSessionProvider.
+  const { sessionId: activeChatSessionId, loadSession, startNewChat } = useChatSession();
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+
+  const refreshChatSessions = useCallback(() => {
+    setChatSessions(listSessions());
+  }, []);
+
+  // Carga inicial + refresco cuando otra pestaña/ventana toca localStorage,
+  // y al recuperar el foco (por si el guardado ocurrió en el mismo contexto,
+  // p.ej. tras enviar un mensaje en /chats, donde el evento 'storage' no dispara).
+  useEffect(() => {
+    refreshChatSessions();
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'tn-chat-sessions') refreshChatSessions();
+    };
+    const onFocus = () => refreshChatSessions();
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshChatSessions]);
+
+  const handleSelectChatSession = (id: string) => {
+    loadSession(id);
+    refreshChatSessions();
+    router.push('/chats');
+  };
+
+  const handleStartNewChat = () => {
+    startNewChat();
+    refreshChatSessions();
+    router.push('/chats');
+  };
+
+  const handleDeleteChatSession = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    deleteSession(id);
+    refreshChatSessions();
+    toast.success('Chat eliminado');
+  };
   // Ancho arrastrable del sidebar expandido: el handle vive en el borde
   // derecho del panel (anclado a la izquierda de la ventana), así que
   // arrastrar hacia la derecha agranda. Solo aplica cuando NO está colapsado;
@@ -94,7 +145,7 @@ const Sidebar: React.FC = () => {
     defaultWidth: 256, // equivalente a w-64 (16rem = 256px), el ancho actual
     storageKey: 'tn-sidebar-width',
   });
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['meetings']));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['meetings', 'chats']));
   // Nova: filtro por origen de la reunión
   const [sourceFilter, setSourceFilter] = useState<'all' | 'teams' | 'recorded'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -862,7 +913,7 @@ const Sidebar: React.FC = () => {
 
             {/* Scrollable meeting items */}
             {!isCollapsed && (
-              <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+              <div className="shrink min-h-0 max-h-[45%] overflow-y-auto custom-scrollbar">
                 {filteredSidebarItems
                   .filter(item => item.type === 'folder' && expandedFolders.has(item.id) && item.children)
                   .map(item => {
@@ -880,6 +931,81 @@ const Sidebar: React.FC = () => {
                       </div>
                     );
                   })}
+              </div>
+            )}
+
+            {/* Chats folder header - mismo patrón visual que "Meeting Notes", desplegable */}
+            {!isCollapsed && (
+              <div
+                onClick={() => toggleFolder('chats')}
+                className="flex-shrink-0 flex items-center transition-all duration-150 p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg cursor-pointer hover:bg-gray-50"
+              >
+                <ChatCircleDots weight="duotone" className="w-4 h-4 mr-2 text-gray-600" />
+                <span className="text-gray-700">Chats</span>
+                <div className="ml-auto">
+                  {expandedFolders.has('chats') ? (
+                    <CaretDown weight="duotone" className="w-4 h-4 text-gray-500" />
+                  ) : (
+                    <CaretRight weight="duotone" className="w-4 h-4 text-gray-500" />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Scrollable chat sessions */}
+            {!isCollapsed && expandedFolders.has('chats') && (
+              <div className="flex-1 shrink min-h-0 overflow-y-auto custom-scrollbar">
+                <div className="mx-3">
+                  <div
+                    onClick={handleStartNewChat}
+                    className="flex items-center px-3 py-2 my-0.5 rounded-md text-sm cursor-pointer hover:bg-gray-50"
+                    style={{ paddingLeft: '12px' }}
+                  >
+                    <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 bg-blue-100">
+                      <Plus weight="duotone" className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                    <span className="flex-1 break-words">Nuevo chat</span>
+                  </div>
+
+                  {chatSessions.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-gray-400">
+                      Todavía no hay chats guardados.
+                    </div>
+                  ) : (
+                    chatSessions.map(session => {
+                      const isActive = session.id === activeChatSessionId;
+                      return (
+                        <div
+                          key={session.id}
+                          className={`flex items-center transition-all duration-150 group px-3 py-2 my-0.5 rounded-md text-sm cursor-pointer ${
+                            isActive ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-50'
+                          }`}
+                          style={{ paddingLeft: '12px' }}
+                          onClick={() => handleSelectChatSession(session.id)}
+                        >
+                          <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 bg-gray-100">
+                            <ChatCircleDots weight="duotone" className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600' : 'text-gray-600'}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="block truncate">{session.title}</span>
+                            <span className="block text-xs text-gray-400">
+                              {formatDistanceToNow(session.updatedAt, { addSuffix: true, locale: es })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                            <button
+                              onClick={(e) => handleDeleteChatSession(e, session.id)}
+                              className="hover:text-red-600 p-1 rounded-md hover:bg-red-50 flex-shrink-0"
+                              aria-label="Eliminar chat"
+                            >
+                              <Trash weight="duotone" className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
           </div>

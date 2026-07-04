@@ -66,6 +66,14 @@ function writeRaw(sessions: ChatSession[]): void {
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, MAX_SESSIONS);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(pruned));
+    // Refresco en vivo: los 'storage' events nativos NO se disparan en la misma
+    // pestaña, así que emitimos uno sintético para que la carpeta "Chats" del
+    // sidebar (que ya escucha 'storage') se actualice al instante.
+    try {
+      window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
+    } catch {
+      window.dispatchEvent(new Event('tn-chat-sessions-changed'));
+    }
   } catch {
     // localStorage puede fallar en contextos restringidos; no es crítico.
   }
