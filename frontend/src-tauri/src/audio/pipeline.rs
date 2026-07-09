@@ -57,6 +57,13 @@ impl AudioMixerRingBuffer {
             }
         }
 
+        // Ternova Meet: publica niveles reales para el indicador de grabación
+        // (no-op barato cuando el emisor live_levels está apagado).
+        crate::audio::live_levels::publish(
+            matches!(device_type, DeviceType::Microphone),
+            &samples,
+        );
+
         match device_type {
             DeviceType::Microphone => self.mic_buffer.extend(samples),
             DeviceType::System => self.system_buffer.extend(samples),

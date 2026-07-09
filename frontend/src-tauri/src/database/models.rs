@@ -9,6 +9,9 @@ pub struct MeetingModel {
     pub created_at: DateTimeUtc,
     pub updated_at: DateTimeUtc,
     pub folder_path: Option<String>,
+    /// Origen de la reunión: 'teams' | 'import' | 'live' | NULL (nativa). Ternova Meet.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
@@ -127,4 +130,11 @@ pub struct TranscriptSetting {
     #[sqlx(rename = "openaiApiKey")]
     #[serde(rename = "openaiApiKey")]
     pub openai_api_key: Option<String>,
+    // Ternova Meet — transcripción remota (DGX / endpoint ASR OpenAI-compatible)
+    #[sqlx(rename = "remoteEndpoint", default)]
+    #[serde(rename = "remoteEndpoint", default)]
+    pub remote_endpoint: Option<String>,
+    #[sqlx(rename = "remoteApiKey", default)]
+    #[serde(rename = "remoteApiKey", default)]
+    pub remote_api_key: Option<String>,
 }

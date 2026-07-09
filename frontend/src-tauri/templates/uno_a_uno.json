@@ -1,0 +1,32 @@
+{
+  "name": "1:1 / Seguimiento personal",
+  "description": "Para reuniones individuales de seguimiento entre dos personas (manager-colaborador, mentoría, etc.).",
+  "sections": [
+    {
+      "title": "Temas tratados",
+      "instruction": "Lista los temas principales que se conversaron durante la sesión.",
+      "format": "list"
+    },
+    {
+      "title": "Avances desde la última sesión",
+      "instruction": "Progreso reportado sobre compromisos o temas de la sesión anterior.",
+      "format": "list"
+    },
+    {
+      "title": "Bloqueos o preocupaciones",
+      "instruction": "Obstáculos, dificultades o preocupaciones planteadas por cualquiera de las partes.",
+      "format": "list"
+    },
+    {
+      "title": "Feedback intercambiado",
+      "instruction": "Retroalimentación dada o recibida durante la conversación, en cualquier dirección.",
+      "format": "paragraph"
+    },
+    {
+      "title": "Compromisos de ambas partes",
+      "instruction": "Compromisos concretos asumidos, indicando quién se compromete a qué y para cuándo. Si no se mencionó ningún compromiso explícito, indícalo brevemente en lugar de inventar tareas.",
+      "format": "list",
+      "item_format": "| **Persona** | **Compromiso** | **Fecha** |\n| --- | --- | --- |"
+    }
+  ]
+}

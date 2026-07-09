@@ -1,8 +1,30 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload } from 'lucide-react';
+import {
+  CaretDown,
+  CaretRight,
+  File as FileIcon,
+  GearSix,
+  CaretCircleLeft,
+  CaretCircleRight,
+  Calendar,
+  ChatsCircle,
+  ChatCircleDots,
+  House,
+  Trash,
+  Microphone,
+  Square,
+  Plus,
+  PencilSimple,
+  Notebook,
+  MagnifyingGlass,
+  X,
+  UploadSimple,
+} from '@phosphor-icons/react';
 import { useRouter, usePathname } from 'next/navigation';
+import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
 import { ConfirmationModal } from '../ConfirmationModel/confirmation-modal';
@@ -16,6 +38,9 @@ import { toast } from 'sonner';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { useImportDialog } from '@/contexts/ImportDialogContext';
 import { useConfig } from '@/contexts/ConfigContext';
+import { useResizable } from '@/hooks/useResizable';
+import { useChatSession } from '@/contexts/ChatSessionProvider';
+import { listSessions, deleteSession, type ChatSession } from '@/lib/chat-history';
 
 import {
   Dialog,
@@ -28,6 +53,7 @@ import { VisuallyHidden } from "@/components/ui/visually-hidden"
 import { MessageToast } from '../MessageToast';
 import Logo from '../Logo';
 import Info from '../Info';
+import ThemeToggle from '../ThemeToggle';
 import { ComplianceNotification } from '../ComplianceNotification';
 import { Input } from '../ui/input';
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '../ui/input-group';
@@ -37,6 +63,7 @@ interface SidebarItem {
   title: string;
   type: 'folder' | 'file';
   children?: SidebarItem[];
+  source?: string | null;
 }
 
 const Sidebar: React.FC = () => {
@@ -61,7 +88,66 @@ const Sidebar: React.FC = () => {
   const { isRecording } = useRecordingState();
   const { openImportDialog } = useImportDialog();
   const { betaFeatures } = useConfig();
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['meetings']));
+  // Carpeta "Chats" (Nova): sesiones de chat guardadas (src/lib/chat-history.ts),
+  // espejo del mismo estado global expuesto por ChatSessionProvider.
+  const { sessionId: activeChatSessionId, loadSession, startNewChat } = useChatSession();
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+
+  const refreshChatSessions = useCallback(() => {
+    setChatSessions(listSessions());
+  }, []);
+
+  // Carga inicial + refresco cuando otra pestaña/ventana toca localStorage,
+  // y al recuperar el foco (por si el guardado ocurrió en el mismo contexto,
+  // p.ej. tras enviar un mensaje en /chats, donde el evento 'storage' no dispara).
+  useEffect(() => {
+    refreshChatSessions();
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'tn-chat-sessions') refreshChatSessions();
+    };
+    const onFocus = () => refreshChatSessions();
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshChatSessions]);
+
+  const handleSelectChatSession = (id: string) => {
+    loadSession(id);
+    refreshChatSessions();
+    router.push('/chats');
+  };
+
+  const handleStartNewChat = () => {
+    startNewChat();
+    refreshChatSessions();
+    router.push('/chats');
+  };
+
+  const handleDeleteChatSession = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    deleteSession(id);
+    refreshChatSessions();
+    toast.success('Chat eliminado');
+  };
+  // Ancho arrastrable del sidebar expandido: el handle vive en el borde
+  // derecho del panel (anclado a la izquierda de la ventana), así que
+  // arrastrar hacia la derecha agranda. Solo aplica cuando NO está colapsado;
+  // el modo colapsado sigue con su ancho fijo (w-16).
+  const { width: sidebarWidth, isResizing: isSidebarResizing, handleProps: sidebarResizeHandleProps } = useResizable({
+    side: 'right',
+    min: 200,
+    max: 420,
+    defaultWidth: 256, // equivalente a w-64 (16rem = 256px), el ancho actual
+    storageKey: 'tn-sidebar-width',
+  });
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['meetings', 'chats']));
+  // Nova: filtro por origen de la reunión
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'teams' | 'recorded'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showModelSettings, setShowModelSettings] = useState(false);
   const [modelConfig, setModelConfig] = useState<ModelConfig>({
@@ -463,7 +549,7 @@ const Sidebar: React.FC = () => {
                 className={`p-2 rounded-lg transition-colors duration-150 ${isHomePage ? 'bg-gray-100' : 'hover:bg-gray-100'
                   }`}
               >
-                <Home className="w-5 h-5 text-gray-600" />
+                <House weight="duotone" className="w-5 h-5 text-gray-600" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -479,9 +565,9 @@ const Sidebar: React.FC = () => {
                 className={`p-2 ${isRecording ? 'bg-red-500 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'} rounded-full transition-colors duration-150 shadow-sm`}
               >
                 {isRecording ? (
-                  <Square className="w-5 h-5 text-white" />
+                  <Square weight="duotone" className="w-5 h-5 text-white" />
                 ) : (
-                  <Mic className="w-5 h-5 text-white" />
+                  <Microphone weight="duotone" className="w-5 h-5 text-white" />
                 )}
               </button>
             </TooltipTrigger>
@@ -497,11 +583,11 @@ const Sidebar: React.FC = () => {
                   onClick={() => openImportDialog()}
                   className="p-2 rounded-lg transition-colors duration-150 hover:bg-blue-100 bg-blue-50"
                 >
-                  <Upload className="w-5 h-5 text-blue-600" />
+                  <UploadSimple weight="duotone" className="w-5 h-5 text-blue-600" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                <p>Import Audio</p>
+                <p>Importar grabación / Teams</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -516,7 +602,7 @@ const Sidebar: React.FC = () => {
                 className={`p-2 rounded-lg transition-colors duration-150 ${isMeetingPage ? 'bg-gray-100' : 'hover:bg-gray-100'
                   }`}
               >
-                <NotebookPen className="w-5 h-5 text-gray-600" />
+                <Notebook weight="duotone" className="w-5 h-5 text-gray-600" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -527,11 +613,27 @@ const Sidebar: React.FC = () => {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                onClick={() => router.push('/chats')}
+                className={`p-2 rounded-lg transition-colors duration-150 ${
+                  pathname === '/chats' ? 'bg-gray-100' : 'hover:bg-gray-100'
+                }`}
+              >
+                <ChatsCircle weight="duotone" className="w-5 h-5 text-gray-600" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Chats</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
                 onClick={() => router.push('/settings')}
                 className={`p-2 rounded-lg transition-colors duration-150 ${isSettingsPage ? 'bg-gray-100' : 'hover:bg-gray-100'
                   }`}
               >
-                <Settings className="w-5 h-5 text-gray-600" />
+                <GearSix weight="duotone" className="w-5 h-5 text-gray-600" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
@@ -540,6 +642,7 @@ const Sidebar: React.FC = () => {
           </Tooltip>
 
           <Info isCollapsed={isCollapsed} />
+          <ThemeToggle isCollapsed={isCollapsed} />
         </div>
       </TooltipProvider>
     );
@@ -587,16 +690,16 @@ const Sidebar: React.FC = () => {
           {item.type === 'folder' ? (
             <>
               {item.id === 'meetings' ? (
-                <Calendar className="w-4 h-4 mr-2" />
+                <Calendar weight="duotone" className="w-4 h-4 mr-2" />
               ) : item.id === 'notes' ? (
-                <Calendar className="w-4 h-4 mr-2" />
+                <Calendar weight="duotone" className="w-4 h-4 mr-2" />
               ) : null}
               <span className={depth === 0 ? "" : "font-medium"}>{item.title}</span>
               <div className="ml-auto">
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
+                  <CaretDown weight="duotone" className="w-4 h-4 text-gray-500" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-gray-500" />
+                  <CaretRight weight="duotone" className="w-4 h-4 text-gray-500" />
                 )}
               </div>
               {searchQuery && item.id === 'meetings' && isSearching && (
@@ -608,14 +711,19 @@ const Sidebar: React.FC = () => {
               <div className="flex items-center w-full">
                 {isMeetingItem ? (
                   <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 bg-gray-100">
-                    <File className="w-3.5 h-3.5 text-gray-600" />
+                    <FileIcon weight="duotone" className="w-3.5 h-3.5 text-gray-600" />
                   </div>
                 ) : (
                   <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 bg-blue-100">
-                    <Plus className="w-3.5 h-3.5 text-blue-600" />
+                    <Plus weight="duotone" className="w-3.5 h-3.5 text-blue-600" />
                   </div>
                 )}
                 <span className="flex-1 break-words">{item.title}</span>
+                {isMeetingItem && item.source === 'teams' && (
+                  <span className="flex-shrink-0 ml-1 mr-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-blue-100 text-blue-700 group-hover:opacity-0 transition-opacity duration-150">
+                    Teams
+                  </span>
+                )}
                 {isMeetingItem && (
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                     <button
@@ -626,7 +734,7 @@ const Sidebar: React.FC = () => {
                       className="hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 flex-shrink-0"
                       aria-label="Edit meeting title"
                     >
-                      <Pencil className="w-4 h-4" />
+                      <PencilSimple weight="duotone" className="w-4 h-4" />
                     </button>
                     <button
                       onClick={(e) => {
@@ -636,7 +744,7 @@ const Sidebar: React.FC = () => {
                       className="hover:text-red-600 p-1 rounded-md hover:bg-red-50 flex-shrink-0"
                       aria-label="Delete meeting"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash weight="duotone" className="w-4 h-4" />
                     </button>
                   </div>
                 )}
@@ -662,23 +770,35 @@ const Sidebar: React.FC = () => {
 
   return (
     <div className="fixed top-0 left-0 h-screen z-40">
-      {/* Floating collapse button */}
+      {/* Floating collapse button (z-[60]: por encima del handle de resize, que usa z-50) */}
       <button
         onClick={toggleCollapse}
-        className="absolute -right-6 top-20 z-50 p-1 bg-white hover:bg-gray-100 rounded-full shadow-lg border"
+        className="absolute -right-6 top-20 z-[60] p-1 bg-white hover:bg-gray-100 rounded-full shadow-lg border"
         style={{ transform: 'translateX(50%)' }}
       >
         {isCollapsed ? (
-          <ChevronRightCircle className="w-6 h-6" />
+          <CaretCircleRight weight="duotone" className="w-6 h-6" />
         ) : (
-          <ChevronLeftCircle className="w-6 h-6" />
+          <CaretCircleLeft weight="duotone" className="w-6 h-6" />
         )}
       </button>
 
       <div
-        className={`h-screen bg-white border-r shadow-sm flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'
-          }`}
+        className={`h-screen bg-white border-r shadow-sm flex flex-col relative
+          ${isCollapsed ? 'w-16' : 'w-auto'}
+          ${isSidebarResizing ? '' : 'transition-all duration-300'}`}
+        style={isCollapsed ? undefined : { width: sidebarWidth }}
       >
+        {!isCollapsed && (
+          <div
+            {...sidebarResizeHandleProps}
+            aria-label="Redimensionar barra lateral"
+            className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize z-50
+              touch-none select-none translate-x-1/2
+              hover:bg-blue-500/40 dark:hover:bg-blue-400/40
+              ${isSidebarResizing ? 'bg-blue-500/50 dark:bg-blue-400/50' : 'bg-transparent'}`}
+          />
+        )}
         {/*  Header with traffic light spacing */}
         <div className="flex-shrink-0 h-22 flex items-center">
 
@@ -700,14 +820,14 @@ const Sidebar: React.FC = () => {
                       onChange={(e) => handleSearchChange(e.target.value)}
                     />
                     <InputGroupAddon>
-                      <SearchIcon />
+                      <MagnifyingGlass weight="duotone" />
                     </InputGroupAddon>
                     {searchQuery &&
                       <InputGroupAddon align={'inline-end'}>
                         <InputGroupButton
                           onClick={() => handleSearchChange('')}
                         >
-                          <X />
+                          <X weight="duotone" />
                         </InputGroupButton>
                       </InputGroupAddon>
                     }
@@ -723,13 +843,26 @@ const Sidebar: React.FC = () => {
           {/* Fixed navigation items */}
           <div className="flex-shrink-0">
             {!isCollapsed && (
-              <div
-                onClick={() => router.push('/')}
-                className="p-3  text-lg font-semibold items-center hover:bg-gray-100 h-10   flex mx-3 mt-3 rounded-lg cursor-pointer"
-              >
-                <Home className="w-4 h-4 mr-2" />
-                <span>Home</span>
-              </div>
+              <>
+                <div
+                  onClick={() => router.push('/')}
+                  className={`p-3 text-lg font-semibold items-center h-10 flex mx-3 mt-3 rounded-lg cursor-pointer ${
+                    pathname === '/' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  }`}
+                >
+                  <House weight="duotone" className="w-4 h-4 mr-2" />
+                  <span>Home</span>
+                </div>
+                <div
+                  onClick={() => router.push('/chats')}
+                  className={`p-3 text-lg font-semibold items-center h-10 flex mx-3 mt-1 rounded-lg cursor-pointer ${
+                    pathname === '/chats' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'
+                  }`}
+                >
+                  <ChatsCircle weight="duotone" className="w-4 h-4 mr-2" />
+                  <span>Chats</span>
+                </div>
+              </>
             )}
           </div>
 
@@ -744,7 +877,7 @@ const Sidebar: React.FC = () => {
                     <div
                       className="flex items-center transition-all duration-150 p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg"
                     >
-                      <NotebookPen className="w-4 h-4 mr-2 text-gray-600" />
+                      <Notebook weight="duotone" className="w-4 h-4 mr-2 text-gray-600" />
                       <span className="text-gray-700">{item.title}</span>
                       {searchQuery && item.id === 'meetings' && isSearching && (
                         <span className="ml-2 text-xs text-blue-500 animate-pulse">Searching...</span>
@@ -755,16 +888,124 @@ const Sidebar: React.FC = () => {
               </div>
             )}
 
+            {/* Filtro por origen (Nova) */}
+            {!isCollapsed && !searchQuery && (
+              <div className="flex-shrink-0 flex items-center gap-1 px-4 pt-2 pb-1">
+                {([
+                  { key: 'all', label: 'Todas' },
+                  { key: 'teams', label: 'Teams' },
+                  { key: 'recorded', label: 'Grabadas' },
+                ] as const).map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setSourceFilter(opt.key)}
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
+                      sourceFilter === opt.key
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Scrollable meeting items */}
             {!isCollapsed && (
-              <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+              <div className="shrink min-h-0 max-h-[45%] overflow-y-auto custom-scrollbar">
                 {filteredSidebarItems
                   .filter(item => item.type === 'folder' && expandedFolders.has(item.id) && item.children)
-                  .map(item => (
-                    <div key={`${item.id}-children`} className="mx-3">
-                      {item.children!.map(child => renderItem(child, 1))}
+                  .map(item => {
+                    // Aplicar filtro por origen solo a la lista de reuniones (no en búsqueda).
+                    const children = (item.id === 'meetings' && !searchQuery && sourceFilter !== 'all')
+                      ? item.children!.filter(child =>
+                          sourceFilter === 'teams'
+                            ? child.source === 'teams'
+                            : child.source !== 'teams'
+                        )
+                      : item.children!;
+                    return (
+                      <div key={`${item.id}-children`} className="mx-3">
+                        {children.map(child => renderItem(child, 1))}
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
+            {/* Chats folder header - mismo patrón visual que "Meeting Notes", desplegable */}
+            {!isCollapsed && (
+              <div
+                onClick={() => toggleFolder('chats')}
+                className="flex-shrink-0 flex items-center transition-all duration-150 p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg cursor-pointer hover:bg-gray-50"
+              >
+                <ChatCircleDots weight="duotone" className="w-4 h-4 mr-2 text-gray-600" />
+                <span className="text-gray-700">Chats</span>
+                <div className="ml-auto">
+                  {expandedFolders.has('chats') ? (
+                    <CaretDown weight="duotone" className="w-4 h-4 text-gray-500" />
+                  ) : (
+                    <CaretRight weight="duotone" className="w-4 h-4 text-gray-500" />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Scrollable chat sessions */}
+            {!isCollapsed && expandedFolders.has('chats') && (
+              <div className="flex-1 shrink min-h-0 overflow-y-auto custom-scrollbar">
+                <div className="mx-3">
+                  <div
+                    onClick={handleStartNewChat}
+                    className="flex items-center px-3 py-2 my-0.5 rounded-md text-sm cursor-pointer hover:bg-gray-50"
+                    style={{ paddingLeft: '12px' }}
+                  >
+                    <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 bg-blue-100">
+                      <Plus weight="duotone" className="w-3.5 h-3.5 text-blue-600" />
                     </div>
-                  ))}
+                    <span className="flex-1 break-words">Nuevo chat</span>
+                  </div>
+
+                  {chatSessions.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-gray-400">
+                      Todavía no hay chats guardados.
+                    </div>
+                  ) : (
+                    chatSessions.map(session => {
+                      const isActive = session.id === activeChatSessionId;
+                      return (
+                        <div
+                          key={session.id}
+                          className={`flex items-center transition-all duration-150 group px-3 py-2 my-0.5 rounded-md text-sm cursor-pointer ${
+                            isActive ? 'bg-blue-100 text-blue-700 font-medium' : 'hover:bg-gray-50'
+                          }`}
+                          style={{ paddingLeft: '12px' }}
+                          onClick={() => handleSelectChatSession(session.id)}
+                        >
+                          <div className="flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full mr-2 bg-gray-100">
+                            <ChatCircleDots weight="duotone" className={`w-3.5 h-3.5 ${isActive ? 'text-blue-600' : 'text-gray-600'}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="block truncate">{session.title}</span>
+                            <span className="block text-xs text-gray-400">
+                              {formatDistanceToNow(session.updatedAt, { addSuffix: true, locale: es })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                            <button
+                              onClick={(e) => handleDeleteChatSession(e, session.id)}
+                              className="hover:text-red-600 p-1 rounded-md hover:bg-red-50 flex-shrink-0"
+                              aria-label="Eliminar chat"
+                            >
+                              <Trash weight="duotone" className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -781,12 +1022,12 @@ const Sidebar: React.FC = () => {
             >
               {isRecording ? (
                 <>
-                  <Square className="w-4 h-4 mr-2" />
+                  <Square weight="duotone" className="w-4 h-4 mr-2" />
                   <span>Recording in progress...</span>
                 </>
               ) : (
                 <>
-                  <Mic className="w-4 h-4 mr-2" />
+                  <Microphone weight="duotone" className="w-4 h-4 mr-2" />
                   <span>Start Recording</span>
                 </>
               )}
@@ -797,19 +1038,23 @@ const Sidebar: React.FC = () => {
                 onClick={() => openImportDialog()}
                 className="w-full flex items-center justify-center px-3 py-2 mt-1 text-sm font-medium text-gray-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors shadow-sm"
               >
-                <Upload className="w-4 h-4 mr-2" />
-                <span>Import Audio</span>
+                <UploadSimple weight="duotone" className="w-4 h-4 mr-2" />
+                <span>Importar grabación / Teams</span>
               </button>
             )}
 
-            <button
-              onClick={() => router.push('/settings')}
-              className="w-full flex items-center justify-center px-3 py-1.5 mt-1 mb-1 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors shadow-sm"
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              <span>Settings</span>
-            </button>
+            <div className="flex items-center gap-1.5 mt-1 mb-1">
+              <button
+                onClick={() => router.push('/settings')}
+                title="Settings"
+                className="flex-1 flex items-center justify-center px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors shadow-sm"
+              >
+                <GearSix weight="duotone" className="w-4 h-4 mr-2" />
+                <span>Settings</span>
+              </button>
+            </div>
             <Info isCollapsed={isCollapsed} />
+            <ThemeToggle isCollapsed={isCollapsed} />
             <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-gray-400">
               v0.4.0
             </div>

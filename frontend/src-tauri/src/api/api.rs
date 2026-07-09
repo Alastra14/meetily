@@ -101,6 +101,9 @@ pub struct TranscriptConfig {
     pub model: String,
     #[serde(rename = "apiKey")]
     pub api_key: Option<String>,
+    // Ternova Meet — endpoint del ASR remoto (DGX) cuando provider == "remote"
+    #[serde(rename = "remoteEndpoint", default)]
+    pub endpoint: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -616,6 +619,7 @@ pub async fn api_get_transcript_config<R: Runtime>(
                 Ok(api_key) => {
                     log_info!("Successfully retrieved transcript config and API key.");
                     Ok(Some(TranscriptConfig {
+                        endpoint: config.remote_endpoint.clone(),
                         provider: config.provider,
                         model: config.model,
                         api_key,
@@ -632,11 +636,25 @@ pub async fn api_get_transcript_config<R: Runtime>(
             }
         }
         Ok(None) => {
+            // Ternova Meet — si el build corporativo trae endpoint DGX horneado,
+            // arranca en "remoto" (frictionless: sin config por usuario).
+            if let Some(dgx) = crate::config::DEFAULT_DGX_TRANSCRIBE_ENDPOINT {
+                if !dgx.trim().is_empty() {
+                    log_info!("No transcript config; usando default DGX (remote): {}", dgx);
+                    return Ok(Some(TranscriptConfig {
+                        provider: "remote".to_string(),
+                        model: crate::config::DEFAULT_REMOTE_TRANSCRIBE_MODEL.to_string(),
+                        api_key: None,
+                        endpoint: Some(dgx.to_string()),
+                    }));
+                }
+            }
             log_info!("No transcript config found, returning default.");
             Ok(Some(TranscriptConfig {
                 provider: "parakeet".to_string(),
                 model: crate::config::DEFAULT_PARAKEET_MODEL.to_string(),
                 api_key: None,
+                endpoint: None,
             }))
         }
         Err(e) => {
@@ -681,6 +699,34 @@ pub async fn api_save_transcript_config<R: Runtime>(
     Ok(
         serde_json::json!({ "status": "success", "message": "Transcript configuration saved successfully" }),
     )
+}
+
+/// Ternova Meet — guarda la config de transcripción REMOTA (DGX / ASR OpenAI-compatible).
+#[tauri::command]
+pub async fn api_save_transcript_remote_config<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    endpoint: String,
+    model: String,
+    api_key: Option<String>,
+    _auth_token: Option<String>,
+) -> Result<serde_json::Value, String> {
+    log_info!("api_save_transcript_remote_config called (native): endpoint={}", &endpoint);
+    let pool = state.db_manager.pool();
+
+    if let Err(e) = SettingsRepository::save_transcript_config(pool, "remote", &model).await {
+        log_error!("Failed to save transcript config (remote): {}", e);
+        return Err(e.to_string());
+    }
+    if let Err(e) =
+        SettingsRepository::save_transcript_remote_config(pool, &endpoint, api_key.as_deref()).await
+    {
+        log_error!("Failed to save remote transcript endpoint: {}", e);
+        return Err(e.to_string());
+    }
+
+    log_info!("Successfully saved remote transcript configuration.");
+    Ok(serde_json::json!({ "status": "success", "message": "Remote transcript configuration saved" }))
 }
 
 #[tauri::command]
@@ -1016,7 +1062,7 @@ pub async fn open_meeting_folder<R: Runtime>(
 
     // Get meeting with folder_path
     let meeting: Option<MeetingModel> = sqlx::query_as(
-        "SELECT id, title, created_at, updated_at, folder_path FROM meetings WHERE id = ?",
+        "SELECT id, title, created_at, updated_at, folder_path, source FROM meetings WHERE id = ?",
     )
     .bind(&meeting_id)
     .fetch_optional(pool)
@@ -1379,5 +1425,58 @@ pub async fn api_test_custom_openai_connection<R: Runtime>(
                 Err(format!("Connection failed: {}", e))
             }
         }
+    }
+}
+
+/// Ternova Meet — prueba de conexión al ASR remoto (DGX / OpenAI-compatible).
+/// Hace GET {endpoint}/models (con Bearer opcional) y reporta los modelos vistos.
+#[tauri::command]
+pub async fn api_test_remote_transcription(
+    endpoint: String,
+    api_key: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let endpoint = endpoint.trim().trim_end_matches('/').to_string();
+    if !endpoint.starts_with("http://") && !endpoint.starts_with("https://") {
+        return Err("El endpoint debe empezar con http:// o https://".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let mut req = client.get(format!("{}/models", endpoint));
+    if let Some(key) = api_key.as_deref().filter(|k| !k.trim().is_empty()) {
+        req = req.bearer_auth(key.trim());
+    }
+
+    match req.send().await {
+        Ok(resp) if resp.status().is_success() => {
+            let models: Vec<String> = resp
+                .json::<serde_json::Value>()
+                .await
+                .ok()
+                .and_then(|v| {
+                    v.get("data").and_then(|d| d.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| m.get("id").and_then(|i| i.as_str()).map(String::from))
+                            .collect()
+                    })
+                })
+                .unwrap_or_default();
+            Ok(serde_json::json!({
+                "ok": true,
+                "message": format!("Conexión OK ({} modelos)", models.len()),
+                "models": models,
+            }))
+        }
+        Ok(resp) => Ok(serde_json::json!({
+            "ok": false,
+            "message": format!("El servidor respondió HTTP {}", resp.status()),
+        })),
+        Err(e) => Ok(serde_json::json!({
+            "ok": false,
+            "message": format!("No se pudo conectar: {}", e),
+        })),
     }
 }

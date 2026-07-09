@@ -4,15 +4,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
-import { Eye, EyeOff, Lock, Unlock } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, Loader2 } from 'lucide-react';
 import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
+import { toast } from 'sonner';
 
 
 export interface TranscriptModelProps {
-    provider: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+    provider: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai' | 'remote';
     model: string;
     apiKey?: string | null;
+    // Nova — endpoint del ASR remoto (DGX) cuando provider === 'remote'
+    endpoint?: string | null;
 }
 
 export interface TranscriptSettingsProps {
@@ -27,6 +30,65 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     const [isApiKeyLocked, setIsApiKeyLocked] = useState<boolean>(true);
     const [isLockButtonVibrating, setIsLockButtonVibrating] = useState<boolean>(false);
     const [uiProvider, setUiProvider] = useState<TranscriptModelProps['provider']>(transcriptModelConfig.provider);
+    // Nova — estado para transcripción remota (DGX)
+    const [remoteEndpoint, setRemoteEndpoint] = useState<string>(transcriptModelConfig.endpoint || '');
+    const [remoteModel, setRemoteModel] = useState<string>(
+        transcriptModelConfig.provider === 'remote' && transcriptModelConfig.model
+            ? transcriptModelConfig.model
+            : 'whisper-large-v3'
+    );
+    const [savingRemote, setSavingRemote] = useState<boolean>(false);
+    const [testingRemote, setTestingRemote] = useState<boolean>(false);
+
+    const handleTestRemote = async () => {
+        const endpoint = remoteEndpoint.trim();
+        if (!endpoint) return;
+        setTestingRemote(true);
+        try {
+            const result = await invoke<{ ok: boolean; message: string; models?: string[] }>(
+                'api_test_remote_transcription',
+                { endpoint, apiKey: apiKey || null }
+            );
+            if (result.ok) {
+                const modelsSuffix = result.models && result.models.length > 0
+                    ? ` Modelos detectados: ${result.models.join(', ')}`
+                    : '';
+                toast.success(`${result.message}${modelsSuffix}`);
+            } else {
+                toast.error(result.message);
+            }
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            toast.error(message);
+        } finally {
+            setTestingRemote(false);
+        }
+    };
+
+    const handleSaveRemote = async () => {
+        setSavingRemote(true);
+        try {
+            const model = remoteModel.trim() || 'whisper-large-v3';
+            const endpoint = remoteEndpoint.trim();
+            await invoke('api_save_transcript_remote_config', {
+                endpoint,
+                model,
+                apiKey: apiKey || null,
+            });
+            setTranscriptModelConfig({
+                ...transcriptModelConfig,
+                provider: 'remote',
+                model,
+                endpoint,
+                apiKey: apiKey || null,
+            });
+            onModelSelect?.();
+        } catch (err) {
+            console.error('Error saving remote transcript config:', err);
+        } finally {
+            setSavingRemote(false);
+        }
+    };
 
     // Sync uiProvider when backend config changes (e.g., after model selection or initial load)
     useEffect(() => {
@@ -123,6 +185,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <SelectContent>
                                     <SelectItem value="parakeet">⚡ Parakeet (Recommended - Real-time / Accurate)</SelectItem>
                                     <SelectItem value="localWhisper">🏠 Local Whisper (High Accuracy)</SelectItem>
+                                    <SelectItem value="remote">🛰️ Remoto / DGX (servidor central)</SelectItem>
                                     {/* <SelectItem value="deepgram">☁️ Deepgram (Backup)</SelectItem>
                                     <SelectItem value="elevenLabs">☁️ ElevenLabs</SelectItem>
                                     <SelectItem value="groq">☁️ Groq</SelectItem>
@@ -130,7 +193,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 </SelectContent>
                             </Select>
 
-                            {uiProvider !== 'localWhisper' && uiProvider !== 'parakeet' && (
+                            {uiProvider !== 'localWhisper' && uiProvider !== 'parakeet' && uiProvider !== 'remote' && (
                                 <Select
                                     value={transcriptModelConfig.model}
                                     onValueChange={(value) => {
@@ -169,6 +232,70 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 onModelSelect={handleParakeetModelSelect}
                                 autoSave={true}
                             />
+                        </div>
+                    )}
+
+                    {/* Nova — transcripción remota (DGX / servidor central) */}
+                    {uiProvider === 'remote' && (
+                        <div className="mt-4 space-y-3 mx-1">
+                            <p className="text-xs text-gray-500">
+                                Transcribe en un servidor central (p. ej. DGX Spark) compatible con la API de
+                                OpenAI (<code>/v1/audio/transcriptions</code>). Las máquinas cliente no necesitan
+                                modelos locales.
+                            </p>
+                            <div>
+                                <Label className="block text-sm font-medium text-gray-700 mb-1">Endpoint (base URL)</Label>
+                                <Input
+                                    value={remoteEndpoint}
+                                    onChange={(e) => setRemoteEndpoint(e.target.value)}
+                                    placeholder="http://dgx-spark.local:8000/v1"
+                                    className="focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <Label className="block text-sm font-medium text-gray-700 mb-1">Modelo</Label>
+                                <Input
+                                    value={remoteModel}
+                                    onChange={(e) => setRemoteModel(e.target.value)}
+                                    placeholder="whisper-large-v3"
+                                    className="focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <Label className="block text-sm font-medium text-gray-700 mb-1">API Key (opcional)</Label>
+                                <Input
+                                    type="password"
+                                    value={apiKey || ''}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder="Solo si el servidor la requiere"
+                                    className="focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                            </div>
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    onClick={handleSaveRemote}
+                                    disabled={savingRemote || !remoteEndpoint.trim()}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                    {savingRemote ? 'Guardando…' : 'Guardar transcripción remota'}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleTestRemote}
+                                    disabled={testingRemote || !remoteEndpoint.trim()}
+                                >
+                                    {testingRemote ? (
+                                        <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Probando…
+                                        </>
+                                    ) : (
+                                        'Probar conexión'
+                                    )}
+                                </Button>
+                            </div>
                         </div>
                     )}
 

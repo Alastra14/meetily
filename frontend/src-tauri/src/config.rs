@@ -11,6 +11,25 @@ pub const DEFAULT_WHISPER_MODEL: &str = "large-v3-turbo";
 /// This is the quantized version optimized for speed.
 pub const DEFAULT_PARAKEET_MODEL: &str = "parakeet-tdt-0.6b-v3-int8";
 
+/// Ternova Meet — endpoint por defecto del ASR remoto (DGX Spark), horneado en
+/// tiempo de build para un despliegue empresarial SIN FRICCIÓN: un build corporativo
+/// compilado con esta variable arranca la transcripción en "remoto" apuntando a la
+/// DGX, sin que cada usuario configure nada. Compilar con:
+///   TERNOVA_DGX_TRANSCRIBE_ENDPOINT=http://<dgx-host>:8000/v1 pnpm tauri:build
+/// Si NO se define, la app se comporta local (whisper/parakeet) — sin regresión.
+pub const DEFAULT_DGX_TRANSCRIBE_ENDPOINT: Option<&str> =
+    option_env!("TERNOVA_DGX_TRANSCRIBE_ENDPOINT");
+
+/// Modelo ASR remoto por defecto (sobreescribible en Ajustes → Transcripción).
+pub const DEFAULT_REMOTE_TRANSCRIBE_MODEL: &str = "whisper-large-v3";
+
+/// Ternova Meet — endpoint por defecto del LLM de resumen en la DGX (vLLM,
+/// OpenAI-compatible), horneado en build. Usado como fallback cuando el provider
+/// de resumen es CustomOpenAI y no hay config guardada. Compilar con:
+///   TERNOVA_DGX_SUMMARY_ENDPOINT=http://<dgx-host>:8000/v1 pnpm tauri:build
+pub const DEFAULT_DGX_SUMMARY_ENDPOINT: Option<&str> =
+    option_env!("TERNOVA_DGX_SUMMARY_ENDPOINT");
+
 /// Whisper model catalog with metadata for all supported models.
 /// Used by both WhisperEngine::discover_models() and discover_models_standalone().
 ///

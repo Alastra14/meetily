@@ -74,6 +74,7 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
                 provider: "parakeet".to_string(),
                 model: crate::config::DEFAULT_PARAKEET_MODEL.to_string(),
                 api_key: None,
+                endpoint: None,
             }
         }
         Err(e) => {
@@ -82,6 +83,7 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
                 provider: "parakeet".to_string(),
                 model: crate::config::DEFAULT_PARAKEET_MODEL.to_string(),
                 api_key: None,
+                endpoint: None,
             }
         }
     };
@@ -135,10 +137,25 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
                 }
             }
         }
+        "remote" => {
+            // Ternova Meet — ASR remoto (DGX): no hay modelo local que validar;
+            // basta con tener un endpoint configurado.
+            match config.endpoint.as_deref() {
+                Some(ep) if !ep.trim().is_empty() => {
+                    info!("🛰️ Remote ASR endpoint configurado: {}", ep);
+                    Ok(())
+                }
+                _ => Err(
+                    "Transcripción remota (DGX) seleccionada pero falta el endpoint. \
+                     Configúralo en Ajustes → Transcripción → Remoto (DGX)."
+                        .to_string(),
+                ),
+            }
+        }
         other => {
             warn!("❌ Unsupported transcription provider for local recording: {}", other);
             Err(format!(
-                "Provider '{}' is not supported for local transcription. Please select 'localWhisper' or 'parakeet'.",
+                "Provider '{}' is not supported for local transcription. Please select 'localWhisper', 'parakeet' or 'remote'.",
                 other
             ))
         }
@@ -170,6 +187,7 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                 provider: "parakeet".to_string(),
                 model: crate::config::DEFAULT_PARAKEET_MODEL.to_string(),
                 api_key: None,
+                endpoint: None,
             }
         }
         Err(e) => {
@@ -178,6 +196,7 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                 provider: "parakeet".to_string(),
                 model: crate::config::DEFAULT_PARAKEET_MODEL.to_string(),
                 api_key: None,
+                endpoint: None,
             }
         }
     };
@@ -211,6 +230,24 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
                     Err("Parakeet engine not initialized. This should not happen after validation.".to_string())
                 }
             }
+        }
+        "remote" => {
+            // Ternova Meet — ASR remoto (DGX / endpoint OpenAI-compatible).
+            let endpoint = config.endpoint.clone().unwrap_or_default();
+            if endpoint.trim().is_empty() {
+                return Err(
+                    "Transcripción remota seleccionada pero falta el endpoint. Configúralo en \
+                     Ajustes → Transcripción → Remoto (DGX)."
+                        .to_string(),
+                );
+            }
+            info!("🛰️ Initializing remote ASR provider at {} (model {})", endpoint, config.model);
+            let provider = super::remote_provider::RemoteTranscriptionProvider::new(
+                endpoint,
+                config.model.clone(),
+                config.api_key.clone(),
+            );
+            Ok(TranscriptionEngine::Provider(Arc::new(provider)))
         }
         "localWhisper" | _ => {
             info!("🎤 Initializing Whisper transcription engine");

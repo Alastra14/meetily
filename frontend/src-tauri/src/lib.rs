@@ -38,6 +38,7 @@ pub(crate) use perf_trace;
 pub mod analytics;
 pub mod api;
 pub mod audio;
+pub mod chat;
 pub mod config;
 pub mod console_utils;
 pub mod database;
@@ -258,6 +259,12 @@ async fn start_audio_level_monitoring<R: Runtime>(
         device_names
     );
 
+    // Ternova Meet: durante una grabación los niveles vienen del pipeline real
+    // (live_levels); el monitor simulado queda solo para el preview de dispositivos.
+    if audio::recording_commands::is_recording().await {
+        audio::live_levels::start(app);
+        return Ok(());
+    }
     audio::simple_level_monitor::start_monitoring(app, device_names)
         .await
         .map_err(|e| format!("Failed to start audio level monitoring: {}", e))
@@ -267,6 +274,7 @@ async fn start_audio_level_monitoring<R: Runtime>(
 async fn stop_audio_level_monitoring() -> Result<(), String> {
     log_info!("Stopping audio level monitoring");
 
+    audio::live_levels::stop();
     audio::simple_level_monitor::stop_monitoring()
         .await
         .map_err(|e| format!("Failed to stop audio level monitoring: {}", e))
@@ -642,6 +650,8 @@ pub fn run() {
             // api::api_save_auto_generate_setting,
             api::api_get_transcript_config,
             api::api_save_transcript_config,
+            api::api_save_transcript_remote_config,
+            api::api_test_remote_transcription,
             api::api_get_transcript_api_key,
             api::api_delete_meeting,
             api::api_get_meeting,
@@ -746,6 +756,7 @@ pub fn run() {
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
             audio::import::start_import_audio_command,
+            chat::chat_with_meetings,
             audio::import::cancel_import_command,
             audio::import::is_import_in_progress_command,
         ])

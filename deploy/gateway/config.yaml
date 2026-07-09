@@ -1,0 +1,42 @@
+# Ternova Meet — API Gateway (LiteLLM) delante de la DGX Spark.
+# Expone UNA sola API OpenAI-compatible autenticada; enruta a los modelos por el
+# bridge interno de Docker (NO por la red). Cumple PT-ARQ-004 (API Gateway, no P2P)
+# y POL-TIC-001 (API con keys + rate-limit + log; HTTPS lo termina Caddy, ver runbook).
+#
+# El master_key NO se hornea aquí: se inyecta por variable de entorno
+# (LITELLM_MASTER_KEY), resguardada por el oficial de seguridad / Key Vault.
+
+model_list:
+  # --- LLM (resumen + chat) ---
+  - model_name: qwen3.6-35b
+    litellm_params:
+      model: openai/qwen3.6-35b
+      api_base: http://172.17.0.1:8000/v1   # vLLM local vía bridge docker
+      api_key: "none"
+  # --- ASR: parakeet (default, multilingüe, rápido) ---
+  - model_name: parakeet
+    litellm_params:
+      model: openai/parakeet-tdt-0.6b-v3
+      api_base: http://172.17.0.1:8002/v1
+      api_key: "none"
+    model_info:
+      mode: audio_transcription
+  # --- ASR: whisper large-v3 (alta precisión, opt-in) ---
+  - model_name: whisper-large-v3
+    litellm_params:
+      model: openai/whisper-large-v3
+      api_base: http://172.17.0.1:8004/v1
+      api_key: "none"
+    model_info:
+      mode: audio_transcription
+
+litellm_settings:
+  drop_params: true
+  # Rate limiting global de respaldo; los límites finos van por virtual key.
+  max_parallel_requests: 8
+  request_timeout: 600
+
+general_settings:
+  master_key: "os.environ/LITELLM_MASTER_KEY"
+  # Log de solicitudes/respuestas (POL-TIC-001). Persistencia real → Postgres/App Insights (runbook).
+  store_model_in_db: false

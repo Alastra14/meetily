@@ -1,0 +1,38 @@
+{
+  "name": "Reunión informativa",
+  "description": "Para sesiones de anuncios o presentaciones sin acuerdos ni decisiones formales.",
+  "sections": [
+    {
+      "title": "Resumen ejecutivo",
+      "instruction": "Resume en 3 a 5 frases de qué trató la reunión y lo más relevante que se comunicó.",
+      "format": "paragraph"
+    },
+    {
+      "title": "Temas presentados",
+      "instruction": "Un punto por cada tema presentado, con lo esencial de lo que se expuso.",
+      "format": "list"
+    },
+    {
+      "title": "Anuncios y fechas clave",
+      "instruction": "Anuncios importantes, hitos o fechas mencionadas (lanzamientos, plazos, eventos).",
+      "format": "list"
+    },
+    {
+      "title": "Preguntas y respuestas destacadas",
+      "instruction": "Preguntas relevantes que se hicieron durante la sesión y sus respuestas.",
+      "format": "list",
+      "item_format": "| **Pregunta** | **Respuesta** |\n| --- | --- |"
+    },
+    {
+      "title": "Material o enlaces mencionados",
+      "instruction": "Documentos, presentaciones o enlaces mencionados durante la sesión.",
+      "format": "list"
+    },
+    {
+      "title": "Compromisos",
+      "instruction": "Sección opcional: inclúyela SOLO si se mencionaron explícitamente compromisos o tareas concretas con responsable. Si no se mencionó ningún compromiso, omite esta sección por completo (no la generes vacía ni fuerces action items que no existieron).",
+      "format": "list",
+      "item_format": "| **Responsable** | **Compromiso** | **Fecha** |\n| --- | --- | --- |"
+    }
+  ]
+}

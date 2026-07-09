@@ -172,6 +172,30 @@ impl SettingsRepository {
         Ok(())
     }
 
+    /// Ternova Meet — guarda el endpoint/API key del ASR remoto (DGX).
+    /// Se asume que la fila '1' ya existe (el front guarda provider/model primero).
+    pub async fn save_transcript_remote_config(
+        pool: &SqlitePool,
+        endpoint: &str,
+        api_key: Option<&str>,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO transcript_settings (id, provider, model, remoteEndpoint, remoteApiKey)
+            VALUES ('1', 'remote', '', $1, $2)
+            ON CONFLICT(id) DO UPDATE SET
+                remoteEndpoint = excluded.remoteEndpoint,
+                remoteApiKey = COALESCE(excluded.remoteApiKey, transcript_settings.remoteApiKey)
+            "#,
+        )
+        .bind(endpoint)
+        .bind(api_key)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
     pub async fn save_transcript_api_key(
         pool: &SqlitePool,
         provider: &str,
@@ -216,6 +240,7 @@ impl SettingsRepository {
             "elevenLabs" => "elevenLabsApiKey",
             "groq" => "groqApiKey",
             "openai" => "openaiApiKey",
+            "remote" => "remoteApiKey", // Ternova Meet — ASR remoto (DGX)
             _ => {
                 return Err(sqlx::Error::Protocol(
                     format!("Invalid provider: {}", provider).into(),

@@ -250,6 +250,244 @@ fn extract_duration_from_metadata(path: &Path) -> Result<f64> {
     Ok(duration_seconds)
 }
 
+/// Borra un archivo temporal de descarga al hacer drop (cubre todas las
+/// salidas tempranas de run_import: éxito, error o cancelación).
+struct TempDownloadCleanup(Option<PathBuf>);
+
+impl Drop for TempDownloadCleanup {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+/// ¿La URL es de Teams/SharePoint/Stream (requiere sesión del navegador)?
+fn is_microsoft_meeting_url(url: &str) -> bool {
+    let u = url.to_lowercase();
+    u.contains("teams.microsoft.com")
+        || u.contains("sharepoint.com")
+        || u.contains("microsoftstream")
+}
+
+/// Localiza el binario de yt-dlp de forma multiplataforma (macOS y Windows).
+fn find_ytdlp() -> Option<PathBuf> {
+    let candidates: &[&str] = if cfg!(target_os = "windows") {
+        &["yt-dlp.exe", "yt-dlp"]
+    } else {
+        &[
+            "yt-dlp",
+            "/opt/homebrew/bin/yt-dlp",
+            "/usr/local/bin/yt-dlp",
+            "/usr/bin/yt-dlp",
+        ]
+    };
+    for c in candidates {
+        let probe = std::process::Command::new(c)
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if matches!(probe, Ok(s) if s.success()) {
+            return Some(PathBuf::from(c));
+        }
+    }
+    None
+}
+
+/// Descarga un enlace de Teams/SharePoint/Stream con yt-dlp usando las cookies
+/// del navegador del usuario (así funciona con enlaces autenticados). Prueba
+/// navegadores en orden: chrome, edge y safari (solo macOS).
+async fn download_via_ytdlp<R: Runtime>(app: &AppHandle<R>, url: &str) -> Result<PathBuf> {
+    let Some(ytdlp) = find_ytdlp() else {
+        let hint = if cfg!(target_os = "windows") {
+            "Instálalo con: winget install yt-dlp (o choco install yt-dlp)"
+        } else {
+            "Instálalo con: brew install yt-dlp"
+        };
+        return Err(anyhow!(
+            "Este enlace de Teams/SharePoint requiere yt-dlp y no está instalado. {}",
+            hint
+        ));
+    };
+
+    let out_base = std::env::temp_dir().join(format!("ternova-meet-teams-{}", Uuid::new_v4()));
+    let out_tpl = format!("{}.%(ext)s", out_base.display());
+
+    let mut browsers: Vec<&str> = vec!["chrome", "edge"];
+    if cfg!(target_os = "macos") {
+        browsers.push("safari");
+    }
+
+    let mut last_err = String::new();
+    for (i, browser) in browsers.iter().enumerate() {
+        emit_progress(
+            app,
+            "downloading",
+            3 + i as u32,
+            &format!("Descargando de Teams con tu sesión de {}…", browser),
+        );
+
+        let ytdlp_c = ytdlp.clone();
+        let url_c = url.to_string();
+        let tpl_c = out_tpl.clone();
+        let browser_c = browser.to_string();
+        let output = tokio::task::spawn_blocking(move || {
+            std::process::Command::new(&ytdlp_c)
+                .args(["--cookies-from-browser", &browser_c])
+                // video+audio DASH primero; fallback a lo mejor disponible
+                .args(["-f", "dash-vcopy+dash-audcopy/bestvideo+bestaudio/best"])
+                .args(["--merge-output-format", "mp4"])
+                .args(["--force-overwrites", "--no-playlist"])
+                .args(["-o", &tpl_c])
+                .arg(&url_c)
+                .output()
+        })
+        .await
+        .map_err(|e| anyhow!("yt-dlp task failed: {}", e))?
+        .map_err(|e| anyhow!("No se pudo ejecutar yt-dlp: {}", e))?;
+
+        if IMPORT_CANCELLED.load(Ordering::SeqCst) {
+            return Err(anyhow!("Import cancelled"));
+        }
+
+        if output.status.success() {
+            // localizar el archivo producido (out_base.<ext>)
+            let parent = out_base.parent().unwrap_or(Path::new("."));
+            let stem = out_base
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_string();
+            if let Ok(rd) = std::fs::read_dir(parent) {
+                for e in rd.flatten() {
+                    let name = e.file_name().to_string_lossy().to_string();
+                    if name.starts_with(&stem) {
+                        info!("yt-dlp descargó {}", e.path().display());
+                        return Ok(e.path());
+                    }
+                }
+            }
+            return Err(anyhow!("yt-dlp terminó pero no se encontró el archivo descargado"));
+        }
+
+        last_err = String::from_utf8_lossy(&output.stderr)
+            .lines()
+            .rev()
+            .find(|l| l.contains("ERROR") || !l.trim().is_empty())
+            .unwrap_or("error desconocido")
+            .to_string();
+        warn!("yt-dlp con {} falló: {}", browser, last_err);
+    }
+
+    Err(anyhow!(
+        "No se pudo descargar el enlace de Teams con las cookies de tu navegador ({}). \
+         Asegúrate de haber abierto la grabación en Chrome/Edge con tu sesión. Detalle: {}",
+        browsers.join("/"),
+        last_err
+    ))
+}
+
+/// Descarga una URL remota a un archivo temporal por streaming, emitiendo
+/// progreso. Usado para importar grabaciones de Teams/Stream/SharePoint vía URL
+/// directa (no autenticada). Las URLs que requieren cookies de sesión se
+/// resuelven con yt-dlp (`download_via_ytdlp`).
+async fn download_url_to_temp<R: Runtime>(app: &AppHandle<R>, url: &str) -> Result<PathBuf> {
+    use futures_util::StreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| anyhow!("Failed to build HTTP client: {}", e))?;
+    let resp = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| anyhow!("Failed to fetch URL: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(anyhow!("Download failed: HTTP {}", resp.status()));
+    }
+
+    // La URL devolvió una página web, no un archivo de audio/video (típico de
+    // enlaces de recap de Teams o SharePoint que requieren sesión).
+    if let Some(ct) = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    {
+        if ct.contains("text/html") {
+            return Err(anyhow!(
+                "El enlace apunta a la página de la reunión, no al archivo de audio/video. \
+                 Para enlaces de Teams/SharePoint usa el enlace tal cual (la app lo descargará \
+                 con tu sesión del navegador vía yt-dlp) o pega una URL directa al archivo."
+            ));
+        }
+    }
+
+    // Inferir extensión desde Content-Type o la URL (default mp4).
+    let ext = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|ct| {
+            if ct.contains("mp4") {
+                Some("mp4")
+            } else if ct.contains("mpeg") {
+                Some("mp3")
+            } else if ct.contains("wav") {
+                Some("wav")
+            } else if ct.contains("webm") {
+                Some("webm")
+            } else if ct.contains("ogg") {
+                Some("ogg")
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            Path::new(url.split('?').next().unwrap_or(url))
+                .extension()
+                .and_then(|e| e.to_str())
+        })
+        .unwrap_or("mp4")
+        .to_string();
+
+    let total = resp.content_length();
+    let temp_path = std::env::temp_dir().join(format!(
+        "ternova-meet-import-{}.{}",
+        Uuid::new_v4(),
+        ext
+    ));
+
+    let mut file = tokio::fs::File::create(&temp_path)
+        .await
+        .map_err(|e| anyhow!("Failed to create temp file: {}", e))?;
+    let mut stream = resp.bytes_stream();
+    let mut downloaded: u64 = 0;
+    while let Some(chunk) = stream.next().await {
+        if IMPORT_CANCELLED.load(Ordering::SeqCst) {
+            drop(file);
+            let _ = tokio::fs::remove_file(&temp_path).await;
+            return Err(anyhow!("Import cancelled"));
+        }
+        let chunk = chunk.map_err(|e| anyhow!("Download error: {}", e))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| anyhow!("Write error: {}", e))?;
+        downloaded += chunk.len() as u64;
+        if let Some(total) = total {
+            if total > 0 {
+                // Mapear la descarga al rango 2..=8% del progreso global.
+                let pct = 2 + ((downloaded as f64 / total as f64) * 6.0) as u32;
+                emit_progress(app, "downloading", pct.min(8), "Downloading from URL...");
+            }
+        }
+    }
+    file.flush().await.ok();
+    info!("Downloaded {} bytes to {}", downloaded, temp_path.display());
+    Ok(temp_path)
+}
+
 /// Start import of an audio file
 pub async fn start_import<R: Runtime>(
     app: AppHandle<R>,
@@ -258,6 +496,7 @@ pub async fn start_import<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    source_tag: Option<String>,
 ) -> Result<ImportResult> {
     // Acquire guard - ensures flag is cleared even on panic/early return
     let _guard = ImportGuard::acquire().map_err(|e| anyhow!(e))?;
@@ -273,6 +512,7 @@ pub async fn start_import<R: Runtime>(
         language,
         model,
         provider,
+        source_tag,
     )
     .await;
 
@@ -315,8 +555,37 @@ async fn run_import<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    source_tag: Option<String>,
 ) -> Result<ImportResult> {
-    let source = PathBuf::from(&source_path);
+    // Resolve the origin: local path or remote URL (Stream/SharePoint/HTTP).
+    // URLs are stream-downloaded to a temp file first; the rest of the pipeline
+    // works on a local file. Authenticated Stream/SharePoint URLs that need
+    // browser cookies are handled by the assisted flow (yt-dlp/skill) which
+    // leaves a local file — that arrives here as a normal local source.
+    let is_url = source_path.starts_with("http://") || source_path.starts_with("https://");
+
+    // Label de origen: 'teams' por defecto para URLs, 'import' para archivos.
+    let source_label = source_tag
+        .as_deref()
+        .unwrap_or(if is_url { "teams" } else { "import" })
+        .to_string();
+
+    // Cleanup del temporal en cualquier salida (éxito, error o cancelación).
+    let mut temp_cleanup = TempDownloadCleanup(None);
+    let source = if is_url {
+        emit_progress(&app, "downloading", 2, "Downloading from URL...");
+        // Enlaces de Teams/SharePoint/Stream requieren la sesión del navegador:
+        // se descargan con yt-dlp + cookies. El resto, por streaming directo.
+        let path = if is_microsoft_meeting_url(&source_path) {
+            download_via_ytdlp(&app, &source_path).await?
+        } else {
+            download_url_to_temp(&app, &source_path).await?
+        };
+        temp_cleanup.0 = Some(path.clone());
+        path
+    } else {
+        PathBuf::from(&source_path)
+    };
 
     // Validate source file
     if !source.exists() {
@@ -324,8 +593,8 @@ async fn run_import<R: Runtime>(
     }
 
     info!(
-        "Starting import for '{}' from {} with language {:?}, model {:?}, provider {:?}",
-        title, source_path, language, model, provider
+        "Starting import for '{}' from {} (source={}) with language {:?}, model {:?}, provider {:?}",
+        title, source_path, source_label, language, model, provider
     );
 
     // Determine which provider to use (default to whisper)
@@ -507,13 +776,65 @@ async fn run_import<R: Runtime>(
 
     emit_progress(&app, "transcribing", 30, "Loading transcription engine...");
 
-    // Initialize the appropriate engine
-    let whisper_engine = if !use_parakeet && total_segments > 0 {
+    // Ternova Meet — offload a la DGX: si el provider de transcripción es "remote"
+    // (explícito en el import o configurado globalmente en Ajustes), transcribimos
+    // los segmentos contra el endpoint ASR remoto en vez de un motor local.
+    use crate::audio::transcription::provider::TranscriptionProvider;
+    let use_remote = {
+        if provider.as_deref() == Some("remote") {
+            true
+        } else {
+            match app.try_state::<AppState>() {
+                Some(state) => match crate::database::repositories::setting::SettingsRepository::get_transcript_config(state.db_manager.pool()).await {
+                    Ok(Some(cfg)) => cfg.provider == "remote",
+                    _ => false,
+                },
+                None => false,
+            }
+        }
+    };
+
+    let remote_provider = if use_remote && total_segments > 0 {
+        let state = app
+            .try_state::<AppState>()
+            .ok_or_else(|| anyhow!("App state not available"))?;
+        let pool = state.db_manager.pool();
+        let cfg = crate::database::repositories::setting::SettingsRepository::get_transcript_config(pool)
+            .await
+            .map_err(|e| anyhow!("No se pudo leer la config de transcripción: {}", e))?;
+        let endpoint = cfg
+            .as_ref()
+            .and_then(|c| c.remote_endpoint.clone())
+            .unwrap_or_default();
+        if endpoint.trim().is_empty() {
+            return Err(anyhow!(
+                "Transcripción remota (DGX) seleccionada pero falta el endpoint. \
+                 Configúralo en Ajustes → Transcripción → Remoto (DGX)."
+            ));
+        }
+        let api_key =
+            crate::database::repositories::setting::SettingsRepository::get_transcript_api_key(pool, "remote")
+                .await
+                .ok()
+                .flatten();
+        let model_name = model.clone().unwrap_or_else(|| "whisper-large-v3".to_string());
+        info!("🛰️ Import usará ASR remoto (DGX) en {} (modelo {})", endpoint, model_name);
+        Some(std::sync::Arc::new(
+            crate::audio::transcription::RemoteTranscriptionProvider::new(
+                endpoint, model_name, api_key,
+            ),
+        ))
+    } else {
+        None
+    };
+
+    // Initialize the appropriate local engine (solo si no es remoto)
+    let whisper_engine = if !use_parakeet && !use_remote && total_segments > 0 {
         Some(get_or_init_whisper(&app, model.as_deref()).await?)
     } else {
         None
     };
-    let parakeet_engine = if use_parakeet && total_segments > 0 {
+    let parakeet_engine = if use_parakeet && !use_remote && total_segments > 0 {
         Some(get_or_init_parakeet(&app, model.as_deref()).await?)
     } else {
         None
@@ -579,7 +900,14 @@ async fn run_import<R: Runtime>(
         }
 
         // Transcribe
-        let (text, conf) = if use_parakeet {
+        let (text, conf) = if use_remote {
+            let p = remote_provider.as_ref().unwrap();
+            let r = p
+                .transcribe(segment.samples.clone(), language.clone())
+                .await
+                .map_err(|e| anyhow!("Remote transcription failed on segment {}: {}", i, e))?;
+            (r.text, r.confidence.unwrap_or(0.9f32))
+        } else if use_parakeet {
             let engine = parakeet_engine.as_ref().unwrap();
             let text = engine
                 .transcribe_audio(segment.samples.clone())
@@ -642,6 +970,7 @@ async fn run_import<R: Runtime>(
         &title,
         &segments,
         meeting_folder.to_string_lossy().to_string(),
+        Some(source_label.as_str()),
     )
     .await?;
 
@@ -658,7 +987,7 @@ async fn run_import<R: Runtime>(
         &title,
         duration_seconds,
         &dest_filename,
-        "import",
+        &source_label,
     ) {
         warn!("Failed to write metadata.json: {}", e);
     }
@@ -692,6 +1021,7 @@ async fn create_meeting_with_transcripts(
     title: &str,
     segments: &[TranscriptSegment],
     folder_path: String,
+    source: Option<&str>,
 ) -> Result<String> {
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
     let now = chrono::Utc::now();
@@ -704,14 +1034,15 @@ async fn create_meeting_with_transcripts(
 
     // Insert meeting
     sqlx::query(
-        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path)
-         VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, source)
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&meeting_id)
     .bind(title)
     .bind(now)
     .bind(now)
     .bind(&folder_path)
+    .bind(source)
     .execute(&mut *tx)
     .await
     .map_err(|e| anyhow!("Failed to create meeting: {}", e))?;
@@ -968,6 +1299,7 @@ pub async fn start_import_audio_command<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    source_tag: Option<String>,
 ) -> Result<ImportStarted, String> {
     // Check if import is already in progress (guard will be acquired in start_import)
     if IMPORT_IN_PROGRESS.load(Ordering::SeqCst) {
@@ -976,7 +1308,8 @@ pub async fn start_import_audio_command<R: Runtime>(
 
     // Spawn import in background
     tauri::async_runtime::spawn(async move {
-        let result = start_import(app, source_path, title, language, model, provider).await;
+        let result =
+            start_import(app, source_path, title, language, model, provider, source_tag).await;
 
         if let Err(e) = result {
             error!("Import failed: {}", e);

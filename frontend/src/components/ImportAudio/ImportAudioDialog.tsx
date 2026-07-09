@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
 import {
-  Upload,
+  UploadSimple,
   Globe,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
+  WarningCircle,
+  CheckCircle,
   X,
   Cpu,
   FileAudio,
   Clock,
   HardDrive,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react';
+  CaretDown,
+  CaretUp,
+} from '@phosphor-icons/react';
 import {
   Dialog,
   DialogContent,
@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { toast } from 'sonner';
+import { invoke } from '@tauri-apps/api/core';
 import { useConfig } from '@/contexts/ConfigContext';
 import { useImportAudio, ImportResult } from '@/hooks/useImportAudio';
 import { useRouter } from 'next/navigation';
@@ -78,6 +79,9 @@ export function ImportAudioDialog({
   const [selectedLang, setSelectedLang] = useState(selectedLanguage || 'auto');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [titleModifiedByUser, setTitleModifiedByUser] = useState(false);
+  // Nova: origen del import — archivo local o URL (Teams/Stream/SharePoint)
+  const [mode, setMode] = useState<'file' | 'url'>('file');
+  const [url, setUrl] = useState('');
 
   // Always start as false — represents "dialog has not yet been opened".
   // Do NOT initialize from the `open` prop: if the component mounts with open=true
@@ -92,7 +96,15 @@ export function ImportAudioDialog({
     loadingModels,
     fetchModels,
     resetSelection,
+    remoteConfigured,
   } = useTranscriptionModels(transcriptModelConfig);
+
+  // Nova: mini-formulario para configurar la transcripción remota (DGX) inline
+  const [remoteEndpointInput, setRemoteEndpointInput] = useState('');
+  const [remoteModelInput, setRemoteModelInput] = useState('whisper-large-v3');
+  const [remoteApiKeyInput, setRemoteApiKeyInput] = useState('');
+  const [savingRemoteConfig, setSavingRemoteConfig] = useState(false);
+  const [remoteJustConfigured, setRemoteJustConfigured] = useState(false);
 
   const handleImportComplete = useCallback((result: ImportResult) => {
     toast.success(`Import complete! ${result.segments_count} segments created.`);
@@ -139,6 +151,12 @@ export function ImportAudioDialog({
       setTitleModifiedByUser(false);
       setSelectedLang(selectedLanguage || 'auto');
       setShowAdvanced(false);
+      setMode('file');
+      setUrl('');
+      setRemoteEndpointInput('');
+      setRemoteModelInput('whisper-large-v3');
+      setRemoteApiKeyInput('');
+      setRemoteJustConfigured(false);
 
       // Validate preselected file if provided
       if (preselectedFile) {
@@ -170,6 +188,19 @@ export function ImportAudioDialog({
     return availableModels.find((m) => m.provider === provider && m.name === name);
   }, [selectedModelKey, availableModels]);
   const isParakeetModel = selectedModel?.provider === 'parakeet';
+  const isRemoteModel = selectedModel?.provider === 'remote';
+  // El servidor remoto ya se encarga de decidir el idioma; no exponemos el selector local
+  const needsRemoteSetup = isRemoteModel && !remoteConfigured && !remoteJustConfigured;
+
+  // Nova: detecta enlaces de Teams/SharePoint/Stream para mostrar un hint contextual
+  const isTeamsOrSharePointUrl = useMemo(() => {
+    const value = url.toLowerCase();
+    return (
+      value.includes('teams.microsoft.com') ||
+      value.includes('sharepoint.com') ||
+      value.includes('microsoftstream')
+    );
+  }, [url]);
 
   useEffect(() => {
     if (isParakeetModel && selectedLang !== 'auto') {
@@ -184,15 +215,48 @@ export function ImportAudioDialog({
     }
   };
 
-  const handleStartImport = async () => {
-    if (!fileInfo) return;
+  const handleSaveRemoteConfig = async () => {
+    if (!remoteEndpointInput.trim()) return;
+    setSavingRemoteConfig(true);
+    try {
+      await invoke('api_save_transcript_remote_config', {
+        endpoint: remoteEndpointInput.trim(),
+        model: remoteModelInput.trim() || 'whisper-large-v3',
+        apiKey: remoteApiKeyInput.trim() || null,
+      });
+      toast.success('Configuración remota guardada');
+      setRemoteJustConfigured(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      toast.error('No se pudo guardar la configuración remota', { description: message });
+    } finally {
+      setSavingRemoteConfig(false);
+    }
+  };
 
+  const handleStartImport = async () => {
+    const lang = isParakeetModel ? null : selectedLang === 'auto' ? null : selectedLang;
+    if (mode === 'url') {
+      if (!url.trim()) return;
+      await startImport(
+        url.trim(),
+        title || 'Reunión de Teams',
+        lang,
+        selectedModel?.name || null,
+        selectedModel?.provider || null,
+        'teams'
+      );
+      return;
+    }
+
+    if (!fileInfo) return;
     await startImport(
       fileInfo.path,
       title || fileInfo.filename,
-      isParakeetModel ? null : selectedLang === 'auto' ? null : selectedLang,
+      lang,
       selectedModel?.name || null,
-      selectedModel?.provider || null
+      selectedModel?.provider || null,
+      'import'
     );
   };
 
@@ -240,17 +304,17 @@ export function ImportAudioDialog({
               </>
             ) : error ? (
               <>
-                <AlertCircle className="h-5 w-5 text-red-600" />
+                <WarningCircle weight="duotone" className="h-5 w-5 text-red-600" />
                 Import Failed
               </>
             ) : status === 'complete' ? (
               <>
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                <CheckCircle weight="duotone" className="h-5 w-5 text-green-600" />
                 Import Complete
               </>
             ) : (
               <>
-                <Upload className="h-5 w-5 text-blue-600" />
+                <UploadSimple weight="duotone" className="h-5 w-5 text-blue-600" />
                 Import Audio File
               </>
             )}
@@ -268,19 +332,70 @@ export function ImportAudioDialog({
           {/* File selection / info */}
           {!isProcessing && !error && (
             <>
-              {fileInfo ? (
+              {/* Conmutador Archivo | URL (Nova) */}
+              <div className="flex rounded-lg border border-gray-200 p-1 bg-gray-50">
+                <button
+                  type="button"
+                  onClick={() => setMode('file')}
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-colors ${mode === 'file' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <UploadSimple weight="duotone" className="h-4 w-4" /> Archivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode('url')}
+                  className={`flex-1 flex items-center justify-center gap-2 rounded-md py-2 text-sm font-medium transition-colors ${mode === 'url' ? 'bg-white shadow-sm text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <Globe weight="duotone" className="h-4 w-4" /> URL / Teams
+                </button>
+              </div>
+
+              {mode === 'url' ? (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-gray-700">
+                      URL de la grabación (Teams / Stream / SharePoint)
+                    </label>
+                    <Input
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="https://…"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Pega una URL directa al archivo. Para enlaces que requieren tu sesión
+                      (cookies), descarga primero con el flujo asistido y usa la pestaña Archivo.
+                    </p>
+                    {isTeamsOrSharePointUrl && (
+                      <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-2 py-1.5">
+                        Enlace de Teams/SharePoint: se descargará usando tu sesión del navegador (yt-dlp).
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm font-medium text-gray-700">Meeting Title</label>
+                    <Input
+                      value={title}
+                      onChange={(e) => {
+                        setTitle(e.target.value);
+                        setTitleModifiedByUser(true);
+                      }}
+                      placeholder="Reunión de Teams"
+                    />
+                  </div>
+                </div>
+              ) : fileInfo ? (
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                   <div className="flex items-start gap-3">
-                    <FileAudio className="h-8 w-8 text-blue-600 flex-shrink-0" />
+                    <FileAudio weight="duotone" className="h-8 w-8 text-blue-600 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 truncate">{fileInfo.filename}</p>
                       <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
                         <span className="flex items-center gap-1">
-                          <Clock className="h-3.5 w-3.5" />
+                          <Clock weight="duotone" className="h-3.5 w-3.5" />
                           {formatDuration(fileInfo.duration_seconds)}
                         </span>
                         <span className="flex items-center gap-1">
-                          <HardDrive className="h-3.5 w-3.5" />
+                          <HardDrive weight="duotone" className="h-3.5 w-3.5" />
                           {formatFileSize(fileInfo.size_bytes)}
                         </span>
                         <span className="text-blue-600 font-medium">{fileInfo.format}</span>
@@ -307,7 +422,7 @@ export function ImportAudioDialog({
                 </div>
               ) : (
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <FileAudio className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <FileAudio weight="duotone" className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <Button onClick={handleSelectFile} disabled={status === 'validating'}>
                     {status === 'validating' ? (
                       <>
@@ -316,7 +431,7 @@ export function ImportAudioDialog({
                       </>
                     ) : (
                       <>
-                        <Upload className="h-4 w-4 mr-2" />
+                        <UploadSimple weight="duotone" className="h-4 w-4 mr-2" />
                         Select Audio File
                       </>
                     )}
@@ -326,7 +441,7 @@ export function ImportAudioDialog({
               )}
 
               {/* Advanced options (collapsible) */}
-              {fileInfo && (
+              {(fileInfo || mode === 'url') && (
                 <div className="border rounded-lg">
                   <button
                     onClick={() => setShowAdvanced(!showAdvanced)}
@@ -334,9 +449,9 @@ export function ImportAudioDialog({
                   >
                     <span>Advanced Options</span>
                     {showAdvanced ? (
-                      <ChevronUp className="h-4 w-4" />
+                      <CaretUp weight="duotone" className="h-4 w-4" />
                     ) : (
-                      <ChevronDown className="h-4 w-4" />
+                      <CaretDown weight="duotone" className="h-4 w-4" />
                     )}
                   </button>
 
@@ -346,7 +461,7 @@ export function ImportAudioDialog({
                       {!isParakeetModel ? (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <Globe className="h-4 w-4 text-muted-foreground" />
+                            <Globe weight="duotone" className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm font-medium">Language</span>
                           </div>
                           <Select value={selectedLang} onValueChange={setSelectedLang}>
@@ -365,7 +480,7 @@ export function ImportAudioDialog({
                       ) : (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <Globe className="h-4 w-4 text-muted-foreground" />
+                            <Globe weight="duotone" className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm font-medium">Language</span>
                           </div>
                           <p className="text-xs text-muted-foreground">
@@ -378,7 +493,7 @@ export function ImportAudioDialog({
                       {availableModels.length > 0 && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
-                            <Cpu className="h-4 w-4 text-muted-foreground" />
+                            <Cpu weight="duotone" className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm font-medium">Model</span>
                           </div>
                           <Select
@@ -400,6 +515,56 @@ export function ImportAudioDialog({
                               ))}
                             </SelectContent>
                           </Select>
+                        </div>
+                      )}
+
+                      {/* Nova: mini-formulario de configuración del servidor remoto (DGX) */}
+                      {needsRemoteSetup && (
+                        <div className="space-y-2 border rounded-lg p-3 bg-blue-50/40 border-blue-200">
+                          <p className="text-xs text-gray-600">
+                            Configura la conexión al servidor de transcripción remota (DGX) antes de usarlo.
+                          </p>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-700">Endpoint</label>
+                            <Input
+                              value={remoteEndpointInput}
+                              onChange={(e) => setRemoteEndpointInput(e.target.value)}
+                              placeholder="http://dgx-spark.local:8000/v1"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-700">Modelo</label>
+                            <Input
+                              value={remoteModelInput}
+                              onChange={(e) => setRemoteModelInput(e.target.value)}
+                              placeholder="whisper-large-v3"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-medium text-gray-700">API Key (opcional)</label>
+                            <Input
+                              type="password"
+                              value={remoteApiKeyInput}
+                              onChange={(e) => setRemoteApiKeyInput(e.target.value)}
+                              placeholder="Solo si el servidor la requiere"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleSaveRemoteConfig}
+                            disabled={savingRemoteConfig || !remoteEndpointInput.trim()}
+                            className="w-full bg-blue-600 hover:bg-blue-700"
+                          >
+                            {savingRemoteConfig ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Guardando…
+                              </>
+                            ) : (
+                              'Guardar'
+                            )}
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -445,16 +610,16 @@ export function ImportAudioDialog({
               <Button
                 onClick={handleStartImport}
                 className="bg-blue-600 hover:bg-blue-700"
-                disabled={!fileInfo}
+                disabled={(mode === 'url' ? !url.trim() : !fileInfo) || needsRemoteSetup}
               >
-                <Upload className="h-4 w-4 mr-2" />
+                <UploadSimple weight="duotone" className="h-4 w-4 mr-2" />
                 Import
               </Button>
             </>
           )}
           {isProcessing && (
             <Button variant="outline" onClick={handleCancel}>
-              <X className="h-4 w-4 mr-2" />
+              <X weight="duotone" className="h-4 w-4 mr-2" />
               Cancel
             </Button>
           )}

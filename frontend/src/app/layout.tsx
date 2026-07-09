@@ -1,14 +1,18 @@
 'use client'
 
 import './globals.css'
-import { Source_Sans_3 } from 'next/font/google'
+import localFont from 'next/font/local'
 import Sidebar from '@/components/Sidebar'
 import { SidebarProvider } from '@/components/Sidebar/SidebarProvider'
 import MainContent from '@/components/MainContent'
 import AnalyticsProvider from '@/components/AnalyticsProvider'
 import { Toaster, toast } from 'sonner'
 import "sonner/dist/styles.css"
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import { ChatDock } from '@/components/Chat/ChatDock'
+import { ChatUIProvider } from '@/contexts/ChatUIContext'
+import { ChatSessionProvider } from '@/contexts/ChatSessionProvider'
+import { applyThemeMode, getThemeMode, THEME_CHANGE_EVENT } from '@/lib/theme'
 import { listen, UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -25,13 +29,55 @@ import { RecordingPostProcessingProvider } from '@/contexts/RecordingPostProcess
 import { ImportAudioDialog, ImportDropOverlay } from '@/components/ImportAudio'
 import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
+import { WelcomeIntro } from '@/components/WelcomeIntro'
 
 
-const sourceSans3 = Source_Sans_3({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-source-sans-3',
+// Nova — tipografías de marca, cargadas en local para funcionar 100%
+// offline (sin Google Fonts). Spec: Gosha Sans = títulos (display),
+// Space Grotesk = subtítulos, Montserrat = cuerpo/UI.
+const montserrat = localFont({
+  src: [
+    { path: '../../public/fonts/Montserrat-VariableFont_wght.ttf', weight: '100 900', style: 'normal' },
+  ],
+  variable: '--font-body',
+  display: 'swap',
 })
+
+const spaceGrotesk = localFont({
+  src: [
+    { path: '../../public/fonts/SpaceGrotesk-VariableFont_wght.ttf', weight: '300 700', style: 'normal' },
+  ],
+  variable: '--font-subtitle',
+  display: 'swap',
+})
+
+const goshaSans = localFont({
+  src: [
+    { path: '../../public/fonts/GoshaSansRegular.otf', weight: '400', style: 'normal' },
+    { path: '../../public/fonts/GoshaSansBold.otf', weight: '700', style: 'normal' },
+  ],
+  variable: '--font-display',
+  display: 'swap',
+})
+
+// Nova — aplica el tema elegido (claro/oscuro/sistema, ver lib/theme)
+// togglendo la clase `dark` en <html>. Reacciona al cambio del sistema y al
+// toggle de la UI (evento tn-theme-change).
+function SystemThemeWatcher() {
+  useEffect(() => {
+    applyThemeMode(getThemeMode())
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onSystem = () => applyThemeMode(getThemeMode())
+    const onManual = () => applyThemeMode(getThemeMode())
+    mq.addEventListener('change', onSystem)
+    window.addEventListener(THEME_CHANGE_EVENT, onManual)
+    return () => {
+      mq.removeEventListener('change', onSystem)
+      window.removeEventListener(THEME_CHANGE_EVENT, onManual)
+    }
+  }, [])
+  return null
+}
 
 // Module-level component — stable reference across RootLayout re-renders.
 // Defined here (not inside RootLayout) so React never sees a new function type
@@ -230,9 +276,26 @@ export default function RootLayout({
     window.location.reload()
   }
 
+  // Nova — la intro de bienvenida (WelcomeIntro) llama a esto cuando el
+  // usuario elige "Descargar modelos locales". Reutilizamos el mismo mecanismo
+  // de onboarding que ya existe (setShowOnboarding), en vez de duplicar el flujo
+  // de descarga: esto monta <OnboardingFlow> empezando en WelcomeStep (paso 1),
+  // que avanza hasta DownloadProgressStep.
+  const handleRequestLocalDownload = () => {
+    console.log('[Layout] WelcomeIntro solicitó descarga de modelos locales, mostrando onboarding')
+    setShowOnboarding(true)
+  }
+
+  // No-op intencional: al "Entrar a la app", WelcomeIntro simplemente se oculta
+  // a sí mismo (su propio estado showIntro) y deja ver lo que showOnboarding ya
+  // decida mostrar debajo (OnboardingFlow o la app principal).
+  const handleEnterApp = () => {
+    console.log('[Layout] Usuario entró a la app desde WelcomeIntro')
+  }
+
   return (
     <html lang="en">
-      <body className={`${sourceSans3.variable} font-sans antialiased`}>
+      <body className={`${montserrat.variable} ${spaceGrotesk.variable} ${goshaSans.variable} font-sans antialiased`}>
         <AnalyticsProvider>
           <RecordingStateProvider>
             <TranscriptProvider>
@@ -247,14 +310,33 @@ export default function RootLayout({
                               {/* Download progress toast provider - listens for background downloads */}
                               <DownloadProgressToastProvider />
 
+                              <SystemThemeWatcher />
+                              {/* Nova: pantalla de bienvenida en CADA arranque (no solo
+                                  la primera vez). Se muestra encima de lo que sea que showOnboarding
+                                  decida renderizar debajo (onboarding o app principal). */}
+                              <WelcomeIntro
+                                onRequestLocalDownload={handleRequestLocalDownload}
+                                onEnterApp={handleEnterApp}
+                              />
                               {/* Show onboarding or main app */}
                               {showOnboarding ? (
                                 <OnboardingFlow onComplete={handleOnboardingComplete} />
                               ) : (
-                                <div className="flex">
-                                  <Sidebar />
-                                  <MainContent>{children}</MainContent>
-                                </div>
+                                <ChatUIProvider>
+                                  {/* Nova: la conversación de chat es una sola, global y
+                                      persistente (no se reinicia al navegar). Vive por
+                                      ENCIMA del router/flex. */}
+                                  <ChatSessionProvider>
+                                    <div className="flex">
+                                      <Sidebar />
+                                      <MainContent>{children}</MainContent>
+                                      {/* Nova: chat acoplado (ocupa espacio, no tapa) */}
+                                      <Suspense fallback={null}>
+                                        <ChatDock />
+                                      </Suspense>
+                                    </div>
+                                  </ChatSessionProvider>
+                                </ChatUIProvider>
                               )}
                               {/* Import audio overlay and dialog */}
                               <ImportDropOverlay visible={showDropOverlay} />

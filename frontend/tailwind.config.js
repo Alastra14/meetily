@@ -8,12 +8,51 @@ module.exports = {
   ],
   theme: {
   	extend: {
+  		// Ternova Meet: Gosha (display/títulos), Space Grotesk (subtítulos),
+  		// Montserrat (body). OJO: nunca dejar aquí una var() que no exista —
+  		// una var indefinida invalida TODO el font-family y cae a serif.
   		fontFamily: {
   			sans: [
-  				'var(--font-source-sans-3)'
+  				'var(--font-body)',
+  				'system-ui',
+  				'sans-serif'
+  			],
+  			subtitle: [
+  				'var(--font-subtitle)',
+  				'system-ui',
+  				'sans-serif'
+  			],
+  			display: [
+  				'var(--font-display)',
+  				'sans-serif'
   			]
   		},
+  		// Escala tipográfica (migrada desde el tailwind.config.ts eliminado)
+  		fontSize: {
+  			'display': ['32px', { lineHeight: '1.2', fontWeight: '700' }],
+  			'h1': ['24px', { lineHeight: '1.3', fontWeight: '600' }],
+  			'h2': ['18px', { lineHeight: '1.4', fontWeight: '500' }],
+  			'body': ['16px', { lineHeight: '1.6', fontWeight: '400' }],
+  			'small': ['14px', { lineHeight: '1.5', fontWeight: '400' }],
+  			'caption': ['12px', { lineHeight: '1.4', fontWeight: '400' }]
+  		},
   		colors: {
+  			// === Remapeo de la escala `blue` a la rampa indigo de Ternova ===
+  			// Las ~153 clases blue-* repartidas en la app renderizan marca sin
+  			// tocar componentes (capa de tema, merge-safe con upstream).
+  			blue: {
+  				50: '#F4F0FA',
+  				100: '#E8E1F5',
+  				200: '#D4C8EE',
+  				300: '#9A83D6',
+  				400: '#7857C5',
+  				500: '#5A37B0',
+  				600: '#4A2399',
+  				700: '#3A1380',
+  				800: '#2A0A60',
+  				900: '#1D0447',
+  				950: '#13002E'
+  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			border: 'hsl(var(--border))',
